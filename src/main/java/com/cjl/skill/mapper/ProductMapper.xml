@@ -20,7 +20,7 @@
 		<include refid="Base_Column_List" />
 		from t_product
 		where id = #{id,jdbcType=INTEGER}
-		for update
+		lock in share mode
 	</select>
 	<delete id="deleteByPrimaryKey"
 		parameterType="java.lang.Integer">
@@ -112,21 +112,23 @@
 		note = #{note,jdbcType=VARCHAR}
 		where id = #{id,jdbcType=INTEGER}
 	</update>
-
+	
+	<!--自定义-->
 	<update id="decreaseStock" parameterType="int">
 		update t_product
 		set stock = stock - 1
 		where id = #{id,jdbcType=INTEGER}
 	</update>
 
-	<delete id="deleteAll">
-		truncate t_product
-	</delete>
-	
 	<select id="selectStockById" parameterType="java.lang.Integer" resultType="int">
 		select
 		stock
 		from t_product
 		where id = #{id,jdbcType=INTEGER}
 	</select>
+	
+	<delete id="deleteAll">
+		truncate t_product
+	</delete>
+	
 </mapper>

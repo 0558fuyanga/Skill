@@ -1,13 +1,10 @@
 package com.cjl.skill.service;
 
 import java.util.Date;
-import java.util.List;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
-
 import com.cjl.skill.mapper.OrderMapper;
 import com.cjl.skill.mapper.ProductMapper;
 import com.cjl.skill.pojo.Order;
@@ -21,9 +18,10 @@ public class SkillServiceImpl implements SkillService {
 	@Autowired
 	private OrderMapper orderMapper;
 	
-	@Transactional(isolation = Isolation.READ_UNCOMMITTED)
+	@Transactional(isolation = Isolation.READ_COMMITTED)
 	@Override
 	public boolean skill(int productId, int userId) {
+		//显式锁配合事务 lock in share mode		
 		Product product = productMapper.selectByPrimaryKey(productId);
 		if(product.getStock()<1) {
 			return false;
