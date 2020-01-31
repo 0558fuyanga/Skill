@@ -18,27 +18,35 @@ public class SkillServiceImpl implements SkillService {
 	@Autowired
 	private OrderMapper orderMapper;
 	
-	@Transactional(isolation = Isolation.READ_COMMITTED)
 	@Override
 	public boolean skill(int productId, int userId) {
-		//显式锁配合事务 lock in share mode		
 		Product product = productMapper.selectByPrimaryKey(productId);
 		if(product.getStock()<1) {
 			return false;
 		}else {
-			productMapper.decreaseStock(productId);
-			Order record = new Order();
-			record.setNote("购买时间："+new Date());
-			record.setPrice(product.getPrice());
-			record.setProductId(productId);
-			record.setQuantity(1);
-			record.setUserId(userId);
-			record.setSum(product.getPrice());
-			orderMapper.insertSelective(record );
-			return true;
+			return createOrder(product,userId);
 		}
 	}
 
+	//下单
+	@Transactional
+	private boolean createOrder(Product p, int userId) {
+		if(productMapper.decreaseStock(p.getId())==1) {
+			Order record = new Order();
+			record.setNote("购买时间："+new Date());
+			record.setPrice(p.getPrice());
+			record.setProductId(p.getId());
+			record.setQuantity(1);
+			record.setUserId(userId);
+			record.setSum(p.getPrice());
+			orderMapper.insertSelective(record);
+			return true;
+		}else {
+			//超卖
+			return false;
+		}
+	}
+	
 	@Override
 	public Product getById(int id) {
 		return productMapper.selectByPrimaryKey(id);

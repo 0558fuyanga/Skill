@@ -17,7 +17,7 @@ public interface ProductMapper {
 
     int updateByPrimaryKey(Product record);
     
-    void decreaseStock(Integer id);
+    int decreaseStock(Integer id);
     
     void deleteAll();
 

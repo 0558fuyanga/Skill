@@ -14,14 +14,6 @@
 	<sql id="Base_Column_List">
 		id, product_name, stock, price, version, note
 	</sql>
-	<select id="selectByPrimaryKey"
-		parameterType="java.lang.Integer" resultMap="BaseResultMap">
-		select
-		<include refid="Base_Column_List" />
-		from t_product
-		where id = #{id,jdbcType=INTEGER}
-		lock in share mode
-	</select>
 	<delete id="deleteByPrimaryKey"
 		parameterType="java.lang.Integer">
 		delete from t_product
@@ -114,10 +106,19 @@
 	</update>
 	
 	<!--自定义-->
-	<update id="decreaseStock" parameterType="int">
+	<select id="selectByPrimaryKey"
+		parameterType="java.lang.Integer" resultMap="BaseResultMap">
+		select
+		<include refid="Base_Column_List" />
+		from t_product
+		where id = #{id,jdbcType=INTEGER}
+		<!-- lock in share mode -->
+	</select>
+	
+	<update id="decreaseStock" parameterType="int" >
 		update t_product
 		set stock = stock - 1
-		where id = #{id,jdbcType=INTEGER}
+		where id = #{id} and stock>0
 	</update>
 
 	<select id="selectStockById" parameterType="java.lang.Integer" resultType="int">
