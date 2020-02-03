@@ -30,14 +30,16 @@ public class OrderServiceImpl implements OrderService {
 		return orderMapper.deleteAll();
 	}
 
-	@Transactional
+	//@Transactional
 	@Override
 	public Order createSkillOrder(Order order) {
 		orderMapper.insertSelective(order);
 		//扣减库存
-		if(productMapper.decreaseStock(order.getProductId())<1) {
+		productMapper.decreaseStock(order.getProductId());
+		
+		/*if(<1) {
 			throw new RuntimeException("扣减库存失败");
-		}
+		}*/
 		return order;
 	}
 

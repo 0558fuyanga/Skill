@@ -115,10 +115,11 @@
 		<!-- lock in share mode -->
 	</select>
 	
+	<!-- and stock>0 -->
 	<update id="decreaseStock" parameterType="int" >
 		update t_product
 		set stock = stock - 1
-		where id = #{id} and stock>0
+		where id = #{id} 
 	</update>
 
 	<select id="selectStockById" parameterType="java.lang.Integer" resultType="int">
