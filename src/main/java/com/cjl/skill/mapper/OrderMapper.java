@@ -19,9 +19,11 @@ public interface OrderMapper {
 
     int updateByPrimaryKey(Order record);
     
-    void deleteAll();
+    int deleteAll();
     
     List<Order> selectAll();
 
 	int selectCountByProductId(int productId);
+
+	int deleteByUserId(int userId);
 }

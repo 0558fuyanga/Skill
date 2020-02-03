@@ -140,6 +140,11 @@
 	<delete id="deleteAll">
 		truncate t_order
 	</delete>
+	<delete id="deleteByUserId"
+		parameterType="java.lang.Integer">
+		delete from t_order
+		where user_id = #{userId}
+	</delete>
 	
 	<select id="selectCountByProductId" parameterType="int" resultType="int">
 		select
