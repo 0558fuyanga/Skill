@@ -119,7 +119,7 @@
 	<update id="decreaseStock" parameterType="int" >
 		update t_product
 		set stock = stock - 1
-		where id = #{id} 
+		where id = #{id} and stock>0
 	</update>
 
 	<select id="selectStockById" parameterType="java.lang.Integer" resultType="int">

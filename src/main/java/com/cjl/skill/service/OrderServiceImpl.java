@@ -11,10 +11,10 @@ import com.cjl.skill.pojo.Order;
 public class OrderServiceImpl implements OrderService {
 	@Autowired
 	private OrderMapper orderMapper;
-	
+
 	@Autowired
 	private ProductMapper productMapper;
-	
+
 	@Override
 	public int add(Order order) {
 		return orderMapper.insertSelective(order);
@@ -30,17 +30,17 @@ public class OrderServiceImpl implements OrderService {
 		return orderMapper.deleteAll();
 	}
 
-	//@Transactional
+	@Transactional
 	@Override
 	public Order createSkillOrder(Order order) {
-		orderMapper.insertSelective(order);
-		//扣减库存
-		productMapper.decreaseStock(order.getProductId());
-		
-		/*if(<1) {
-			throw new RuntimeException("扣减库存失败");
-		}*/
-		return order;
+		// 扣减库存时，同时做判断，需要修改sql语句
+		//throw new RuntimeException("扣减库存失败");
+		if (productMapper.decreaseStock(order.getProductId()) > 0) {
+			orderMapper.insertSelective(order);
+			return order;
+		}else {
+			return null;
+		}
 	}
 
 }

@@ -73,8 +73,11 @@ public class SkillController {
 		record.setUserId(user.getId());
 		record.setSum(p.getPrice());
 		try {
-			orderService.createSkillOrder(record);
-			return "ok";
+			if(orderService.createSkillOrder(record)!=null)
+				return "ok";
+			else {
+				return "秒杀下单失败";
+			}
 		} catch (Exception e) {
 			e.printStackTrace();
 			return "秒杀下单失败";
