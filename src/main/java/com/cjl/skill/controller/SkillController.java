@@ -1,9 +1,8 @@
 package com.cjl.skill.controller;
 
 import java.util.Date;
-
+import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Resource;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Controller;
@@ -19,6 +18,7 @@ import com.cjl.skill.pojo.User;
 import com.cjl.skill.service.OrderService;
 import com.cjl.skill.service.ProductService;
 import com.cjl.skill.util.ConstantUtil;
+import com.cjl.skill.util.LocalCache;
 
 @Controller
 public class SkillController {
@@ -57,12 +57,19 @@ public class SkillController {
 		if (address == null) {
 			return "没有默认收货地址";
 		}
-
-		//拦截1：缓存预减 (原子减法，没有并发问题)，但是有其他问题哦，退单时还原库存后，库存还是负数，会失效，例如减少到-100，怎么还原呢？？
+		
+		//本地缓存拦截
+		if(LocalCache.soldOutProducts.get(productId)!=null) {
+			return "商品已售完";
+		}
+		
+		//拦截：缓存预减 (原子减法，没有并发问题)，但是有其他问题哦，退单时还原库存后，库存还是负数，会失效，例如减少到-100，怎么还原呢？？
 		Long stock = stringRedisTemplate.opsForValue().decrement(ConstantUtil.REDIS_KEY_STOCK_PREFIX+productId);
 		if(stock<0) {
 			//库存减少到负数时，还原库存，一次加1就行，维持整体公平原则就行，不需要考虑并发性还原问题
 			stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+productId);
+			//商品售完，添加本地缓存标记
+			LocalCache.soldOutProducts.put(productId, true);
 			return "商品已售完";
 		}
 		
@@ -102,12 +109,16 @@ public class SkillController {
 			else {
 				//下单失败，退库存
 				stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+p.getId());
+				//商品退单，撤销本地缓存标记
+				LocalCache.soldOutProducts.remove(p.getId());
 				return "秒杀下单失败";
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
 			//下单失败，退库存
 			stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+p.getId());
+			//商品退单，撤销本地缓存标记
+			LocalCache.soldOutProducts.remove(p.getId());
 			return "秒杀下单失败";
 		}
 	}

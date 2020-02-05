@@ -41,8 +41,11 @@ table tr:nth-child(even) {
 		<div style="margin-bottom: 50px">
 			<a href="javascript:initData();">初始化商品数据</a>
 		</div>
-		<div style="margin-bottom: 50px">
+		<div style="margin-bottom: 30px">
 			<a href="javascript:loadStock();">预热商品库存数据</a>
+		</div>
+		<div style="margin-bottom: 30px">
+			<a href="javascript:clearCache();">清除本地缓存数据</a>
 		</div>
 		<h3>测试结果信息</h3>
 		<div>
@@ -126,6 +129,18 @@ table tr:nth-child(even) {
 				function loadStock(){
 					$.ajax({
 						url : '/admin/skill/load/stock',
+						type : 'get',
+						success : function(data) {
+							if (data == 'ok') {
+								location.href='/skill'
+							} else{alert('失败')}
+						}
+					})
+				}
+
+				function clearCache(){
+					$.ajax({
+						url : '/admin/skill/cache/clear',
 						type : 'get',
 						success : function(data) {
 							if (data == 'ok') {

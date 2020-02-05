@@ -6,14 +6,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import com.cjl.skill.service.SkillManageService;
-
+import com.cjl.skill.util.LocalCache;
 
 @Controller
 @RequestMapping("/admin/skill")
 public class SkillManageController {
 	@Autowired
 	private SkillManageService skillService;
-	
+
 	@GetMapping("/init")
 	public @ResponseBody String initSkill() {
 		try {
@@ -24,8 +24,8 @@ public class SkillManageController {
 			return "error";
 		}
 	}
-	
-	//库存缓存预热
+
+	// 库存缓存预热
 	@GetMapping("/load/stock")
 	public @ResponseBody String loadStock() {
 		try {
@@ -36,7 +36,19 @@ public class SkillManageController {
 			return "error";
 		}
 	}
-	
+
+	//清除本地缓存
+	@GetMapping("/cache/clear")
+	public @ResponseBody String clearLocalCache() {
+		try {
+			LocalCache.soldOutProducts.clear();
+			return "ok";
+		} catch (Exception e) {
+			e.printStackTrace();
+			return "error";
+		}
+	}
+
 	@GetMapping("/report")
 	public @ResponseBody Object reportSkill(int productId) {
 		try {
