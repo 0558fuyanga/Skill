@@ -1,5 +1,7 @@
 package com.cjl.skill.mapper;
 
+import java.util.List;
+
 import org.apache.ibatis.annotations.Mapper;
 
 import com.cjl.skill.pojo.Product;
@@ -22,4 +24,6 @@ public interface ProductMapper {
     void deleteAll();
 
 	int selectStockById(int id);
+
+	List<Product> selectSkillGoods();
 }

@@ -25,6 +25,18 @@ public class SkillManageController {
 		}
 	}
 	
+	//库存缓存预热
+	@GetMapping("/load/stock")
+	public @ResponseBody String loadStock() {
+		try {
+			skillService.loadStock();
+			return "ok";
+		} catch (Exception e) {
+			e.printStackTrace();
+			return "error";
+		}
+	}
+	
 	@GetMapping("/report")
 	public @ResponseBody Object reportSkill(int productId) {
 		try {

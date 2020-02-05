@@ -1,7 +1,11 @@
 package com.cjl.skill.controller;
 
 import java.util.Date;
+
+import javax.annotation.Resource;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,6 +18,7 @@ import com.cjl.skill.pojo.Product;
 import com.cjl.skill.pojo.User;
 import com.cjl.skill.service.OrderService;
 import com.cjl.skill.service.ProductService;
+import com.cjl.skill.util.ConstantUtil;
 
 @Controller
 public class SkillController {
@@ -23,6 +28,9 @@ public class SkillController {
 
 	@Autowired
 	private ProductService productService;
+	
+	@Resource(name = "stringRedisTemplate")
+	private StringRedisTemplate stringRedisTemplate;
 
 	@GetMapping("/skill")
 	public String skillPage(@RequestParam(defaultValue = "1") int id, Model model) {
@@ -50,6 +58,15 @@ public class SkillController {
 			return "没有默认收货地址";
 		}
 
+		//拦截1：缓存预减 (原子减法，没有并发问题)，但是有其他问题哦，退单时还原库存后，库存还是负数，会失效，例如减少到-100，怎么还原呢？？
+		Long stock = stringRedisTemplate.opsForValue().decrement(ConstantUtil.REDIS_KEY_STOCK_PREFIX+productId);
+		if(stock<0) {
+			//库存减少到负数时，还原库存，一次加1就行，维持整体公平原则就行，不需要考虑并发性还原问题
+			stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+productId);
+			return "商品已售完";
+		}
+		
+		
 		Product product = productService.getById(productId);
 		if (product == null) {
 			return "商品不存在";
@@ -64,6 +81,13 @@ public class SkillController {
 
 	}
 
+	/**
+	 * 下单操作
+	 * @param p
+	 * @param address
+	 * @param user
+	 * @return
+	 */
 	private String createOrder(Product p, Address address, User user) {
 		Order record = new Order();
 		record.setNote("购买时间：" + new Date());
@@ -76,10 +100,14 @@ public class SkillController {
 			if(orderService.createSkillOrder(record)!=null)
 				return "ok";
 			else {
+				//下单失败，退库存
+				stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+p.getId());
 				return "秒杀下单失败";
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
+			//下单失败，退库存
+			stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+p.getId());
 			return "秒杀下单失败";
 		}
 	}

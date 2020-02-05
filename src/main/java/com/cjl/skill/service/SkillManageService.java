@@ -6,4 +6,7 @@ public interface SkillManageService {
 	int getOrderCountByProductId(int productId);
 	
 	int getStockByProductId(int productId);
+
+
+	void loadStock();
 }

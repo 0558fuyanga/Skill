@@ -133,4 +133,11 @@
 		truncate t_product
 	</delete>
 	
+	<!-- 查询所有秒杀商品 -->
+	<select id="selectSkillGoods" resultType="com.cjl.skill.pojo.Product">
+		select
+		<include refid="Base_Column_List" />
+		from t_product
+		where id = (select product_ids from t_activity where id=1)
+	</select>
 </mapper>
