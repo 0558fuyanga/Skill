@@ -34,9 +34,9 @@ public class OrderServiceImpl implements OrderService {
 	@Override
 	public Order createSkillOrder(Order order) {
 		// 扣减库存时，同时做判断，需要修改sql语句
-		//throw new RuntimeException("扣减库存失败");
 		if (productMapper.decreaseStock(order.getProductId()) > 0) {
 			orderMapper.insertSelective(order);
+			//throw new RuntimeException("扣减库存失败");  //模拟下单失败
 			return order;
 		}else {
 			return null;

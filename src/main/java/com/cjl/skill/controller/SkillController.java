@@ -1,8 +1,13 @@
 package com.cjl.skill.controller;
 
 import java.util.Date;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Resource;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.recipes.cache.NodeCache;
+import org.apache.curator.framework.recipes.cache.NodeCacheListener;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.ZooDefs;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Controller;
@@ -31,6 +36,9 @@ public class SkillController {
 	
 	@Resource(name = "stringRedisTemplate")
 	private StringRedisTemplate stringRedisTemplate;
+	
+	@Autowired
+	private CuratorFramework client;
 
 	@GetMapping("/skill")
 	public String skillPage(@RequestParam(defaultValue = "1") int id, Model model) {
@@ -70,9 +78,10 @@ public class SkillController {
 			stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+productId);
 			//商品售完，添加本地缓存标记
 			LocalCache.soldOutProducts.put(productId, true);
+			//创建zknode和监听，同步各个本地缓存数据
+			zkCreateNode(productId);
 			return "商品已售完";
 		}
-		
 		
 		Product product = productService.getById(productId);
 		if (product == null) {
@@ -86,6 +95,45 @@ public class SkillController {
 		// 生成订单
 		return createOrder(product,address,user);
 
+	}
+
+	//创建监听节点
+	private void zkCreateNode(int productId) {
+		try {
+			//没有新建，就创建
+			if (client.checkExists().forPath(ConstantUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+productId)==null){
+			    client.create().creatingParentContainersIfNeeded()
+			            .withMode(CreateMode.PERSISTENT)
+			            .withACL(ZooDefs.Ids.OPEN_ACL_UNSAFE)
+			            .forPath(ConstantUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+productId,"true".getBytes());
+			    /*Curator之nodeCache一次注册，N次监听*/
+		        //为节点添加watcher
+		        //监听数据节点的变更，会触发事件
+		        NodeCache nodeCache = new NodeCache(client,ConstantUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+productId);
+		        //buildInitial: 初始化的时候获取node的值并且缓存
+		        nodeCache.start(true);
+		        nodeCache.getListenable().addListener(new NodeCacheListener() {
+		            public void nodeChanged() throws Exception {
+		                //获取当前数据
+		                String data = new String(nodeCache.getCurrentData().getData());
+		                System.out.println("节点路径为："+nodeCache.getCurrentData().getPath()+" 数据: "+data);
+		                //商品退单，撤销本地缓存标记
+		                if(nodeCache.getCurrentData().getData().toString().equals("false")) {
+		                	LocalCache.soldOutProducts.remove(productId);
+		                }else {
+		                	LocalCache.soldOutProducts.put(productId, true);
+		                }
+		            }
+		        });
+
+			}else {
+				//修改为true，因为其他机器可能是false，因为退单
+				client.setData()
+		        .forPath(ConstantUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+productId, "true".getBytes());
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 
 	/**
@@ -107,20 +155,32 @@ public class SkillController {
 			if(orderService.createSkillOrder(record)!=null)
 				return "ok";
 			else {
-				//下单失败，退库存
-				stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+p.getId());
-				//商品退单，撤销本地缓存标记
-				LocalCache.soldOutProducts.remove(p.getId());
-				return "秒杀下单失败";
+				return renewStock(p);
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
-			//下单失败，退库存
-			stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+p.getId());
-			//商品退单，撤销本地缓存标记
-			LocalCache.soldOutProducts.remove(p.getId());
-			return "秒杀下单失败";
+			return renewStock(p);
 		}
+	}
+	
+	/**
+	 * 下单操作失败，返回库存
+	 * @param p
+	 * @return
+	 */
+	private String renewStock(Product p) {
+		//下单失败，退库存
+		stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+p.getId());
+		//商品退单，撤销本地缓存标记
+		LocalCache.soldOutProducts.remove(p.getId());
+		//修改zknode节点数据状态为 false
+		try {
+			client.setData()
+			.forPath(ConstantUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+p.getId(), "false".getBytes());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return "秒杀下单失败";
 	}
 
 	/**
