@@ -1,6 +1,7 @@
 package com.cjl.skill.controller;
 
 import java.util.Date;
+
 import javax.annotation.Resource;
 
 import org.apache.curator.framework.CuratorFramework;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.cjl.skill.mq.MqAsyncProducer;
 import com.cjl.skill.pojo.Address;
 import com.cjl.skill.pojo.Order;
 import com.cjl.skill.pojo.Product;
@@ -23,6 +26,7 @@ import com.cjl.skill.pojo.User;
 import com.cjl.skill.service.OrderService;
 import com.cjl.skill.service.ProductService;
 import com.cjl.skill.util.ConstantUtil;
+import com.cjl.skill.util.JsonUtil;
 import com.cjl.skill.util.LocalCache;
 
 @Controller
@@ -39,6 +43,9 @@ public class SkillController {
 	
 	@Autowired
 	private CuratorFramework client;
+	
+	@Autowired
+	private MqAsyncProducer producer;
 
 	@GetMapping("/skill")
 	public String skillPage(@RequestParam(defaultValue = "1") int id, Model model) {
@@ -92,8 +99,11 @@ public class SkillController {
 			return "商品已经抢完了";
 		}
 
-		// 生成订单
-		return createOrder(product,address,user);
+		// 同步生成订单
+		//return createOrder(product,address,user);
+		
+		//异步下单
+		return createMqOrder(product,address,user);
 
 	}
 
@@ -143,7 +153,7 @@ public class SkillController {
 	 * @param user
 	 * @return
 	 */
-	private String createOrder(Product p, Address address, User user) {
+	public String createOrder(Product p, Address address, User user) {
 		Order record = new Order();
 		record.setNote("购买时间：" + new Date());
 		record.setPrice(p.getPrice());
@@ -164,11 +174,34 @@ public class SkillController {
 	}
 	
 	/**
+	 * mq异步下单操作
+	 * @param p
+	 * @param address
+	 * @param user
+	 * @return
+	 */
+	public String createMqOrder(Product p, Address address, User user) {
+		Order record = new Order();
+		record.setNote("购买时间：" + new Date());
+		record.setPrice(p.getPrice());
+		record.setProductId(p.getId());
+		record.setQuantity(1);
+		record.setUserId(user.getId());
+		record.setSum(p.getPrice());
+		//发送消息
+		producer.send(ConstantUtil.MQ_ORDER_TOPIC,
+				ConstantUtil.MQ_ORDER_TOPIC_TAG_1, 
+				user.getId().toString(), JsonUtil.obj2String(record));
+		
+		return "排队中";
+	}
+	
+	/**
 	 * 下单操作失败，返回库存
 	 * @param p
 	 * @return
 	 */
-	private String renewStock(Product p) {
+	public String renewStock(Product p) {
 		//下单失败，退库存
 		stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+p.getId());
 		//商品退单，撤销本地缓存标记
