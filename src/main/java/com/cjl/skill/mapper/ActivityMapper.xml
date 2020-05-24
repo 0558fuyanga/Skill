@@ -4,12 +4,11 @@
   <resultMap id="BaseResultMap" type="com.cjl.skill.pojo.Activity">
     <id column="id" jdbcType="INTEGER" property="id" />
     <result column="activity_name" jdbcType="VARCHAR" property="activityName" />
-    <result column="product_ids" jdbcType="VARCHAR" property="productIds" />
     <result column="start_time" jdbcType="TIMESTAMP" property="startTime" />
     <result column="end_time" jdbcType="TIMESTAMP" property="endTime" />
   </resultMap>
   <sql id="Base_Column_List">
-    id, activity_name, product_ids, start_time, end_time
+    id, activity_name, start_time, end_time
   </sql>
   <select id="selectByPrimaryKey" parameterType="java.lang.Integer" resultMap="BaseResultMap">
     select 
@@ -25,10 +24,10 @@
     <selectKey keyProperty="id" order="AFTER" resultType="java.lang.Integer">
       SELECT LAST_INSERT_ID()
     </selectKey>
-    insert into t_activity (activity_name, product_ids, start_time, 
-      end_time)
-    values (#{activityName,jdbcType=VARCHAR}, #{productIds,jdbcType=VARCHAR}, #{startTime,jdbcType=TIMESTAMP}, 
-      #{endTime,jdbcType=TIMESTAMP})
+    insert into t_activity (activity_name, start_time, end_time
+      )
+    values (#{activityName,jdbcType=VARCHAR}, #{startTime,jdbcType=TIMESTAMP}, #{endTime,jdbcType=TIMESTAMP}
+      )
   </insert>
   <insert id="insertSelective" parameterType="com.cjl.skill.pojo.Activity">
     <selectKey keyProperty="id" order="AFTER" resultType="java.lang.Integer">
@@ -38,9 +37,6 @@
     <trim prefix="(" suffix=")" suffixOverrides=",">
       <if test="activityName != null">
         activity_name,
-      </if>
-      <if test="productIds != null">
-        product_ids,
       </if>
       <if test="startTime != null">
         start_time,
@@ -52,9 +48,6 @@
     <trim prefix="values (" suffix=")" suffixOverrides=",">
       <if test="activityName != null">
         #{activityName,jdbcType=VARCHAR},
-      </if>
-      <if test="productIds != null">
-        #{productIds,jdbcType=VARCHAR},
       </if>
       <if test="startTime != null">
         #{startTime,jdbcType=TIMESTAMP},
@@ -70,9 +63,6 @@
       <if test="activityName != null">
         activity_name = #{activityName,jdbcType=VARCHAR},
       </if>
-      <if test="productIds != null">
-        product_ids = #{productIds,jdbcType=VARCHAR},
-      </if>
       <if test="startTime != null">
         start_time = #{startTime,jdbcType=TIMESTAMP},
       </if>
@@ -85,7 +75,6 @@
   <update id="updateByPrimaryKey" parameterType="com.cjl.skill.pojo.Activity">
     update t_activity
     set activity_name = #{activityName,jdbcType=VARCHAR},
-      product_ids = #{productIds,jdbcType=VARCHAR},
       start_time = #{startTime,jdbcType=TIMESTAMP},
       end_time = #{endTime,jdbcType=TIMESTAMP}
     where id = #{id,jdbcType=INTEGER}

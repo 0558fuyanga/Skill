@@ -9,20 +9,19 @@ public class Address implements Serializable {
 
     private Integer userId;
 
-    private Boolean iisDefault;
+    private Boolean areDefault;
 
     private static final long serialVersionUID = 1L;
-
     
-    public Address(Integer id, String address, Integer userId, Boolean iisDefault) {
+    public Address() {}
+    
+    public Address(Integer id, String address, Integer userId, Boolean areDefault) {
 		this.id = id;
 		this.address = address;
 		this.userId = userId;
-		this.iisDefault = iisDefault;
+		this.areDefault = areDefault;
 	}
 
-    public Address() {};
-    
 	public Integer getId() {
         return id;
     }
@@ -47,11 +46,11 @@ public class Address implements Serializable {
         this.userId = userId;
     }
 
-    public Boolean getIisDefault() {
-        return iisDefault;
+    public Boolean getAreDefault() {
+        return areDefault;
     }
 
-    public void setIisDefault(Boolean iisDefault) {
-        this.iisDefault = iisDefault;
+    public void setAreDefault(Boolean areDefault) {
+        this.areDefault = areDefault;
     }
 }

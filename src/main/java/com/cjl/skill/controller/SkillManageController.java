@@ -1,72 +1,114 @@
 package com.cjl.skill.controller;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
+import com.cjl.skill.pojo.Activity;
+import com.cjl.skill.pojo.ActivityProduct;
+import com.cjl.skill.pojo.Product;
+import com.cjl.skill.service.ActivityProductService;
+import com.cjl.skill.service.ProductService;
 import com.cjl.skill.service.SkillManageService;
-import com.cjl.skill.util.LocalCache;
+import com.cjl.skill.util.AckMessage;
 
 @Controller
 @RequestMapping("/admin/skill")
 public class SkillManageController {
 	@Autowired
 	private SkillManageService skillService;
+	
+	@Autowired
+	private ActivityProductService activityProductService;
+	
+	@Autowired
+	private ProductService productService;
 
+
+	/**
+	 * 初始化测试环境数据
+	 * @return
+	 */
 	@GetMapping("/init")
-	public @ResponseBody String initSkill() {
+	public @ResponseBody Object initSkill() {
 		try {
 			skillService.init();
-			return "ok";
+			return AckMessage.ok();
 		} catch (Exception e) {
 			e.printStackTrace();
-			return "error";
+			return AckMessage.error();
 		}
 	}
 
-	// 库存缓存预热
-	@GetMapping("/load/stock")
-	public @ResponseBody String loadStock() {
-		try {
-			skillService.loadStock();
-			return "ok";
-		} catch (Exception e) {
-			e.printStackTrace();
-			return "error";
-		}
-	}
-
-	//清除本地缓存
-	@GetMapping("/cache/clear")
-	public @ResponseBody String clearLocalCache() {
-		try {
-			LocalCache.soldOutProducts.clear();
-			return "ok";
-		} catch (Exception e) {
-			e.printStackTrace();
-			return "error";
-		}
-	}
-
+	/**
+	 * 生成秒杀报告
+	 * @param 
+	 * @return
+	 */
 	@GetMapping("/report")
-	public @ResponseBody Object reportSkill(int productId) {
+	public @ResponseBody Object reportSkill() {
 		try {
-			int orderCount = skillService.getOrderCountByProductId(productId);
-			int stock = skillService.getStockByProductId(productId);
-			Report report = new Report();
-			report.setOrderCount(orderCount);
-			report.setProductStock(stock);
-			return report;
+			List<Report> reports = new ArrayList<SkillManageController.Report>();
+			
+			List<ActivityProduct> list = activityProductService.getByActId(1);
+			for (ActivityProduct ap : list) {
+				int orderCount = skillService.getOrderCountByProductId(ap.getProductId());
+				Product p = productService.getById(ap.getProductId());
+				Report report = new Report();
+				report.setId(p.getId());
+				report.setOrderCount(orderCount);
+				report.setProductStock(p.getStock());
+				report.setProductName(p.getProductName());
+				reports.add(report);
+			}
+			return AckMessage.ok(reports);
 		} catch (Exception e) {
 			e.printStackTrace();
-			return "error";
+			return AckMessage.error();
 		}
 	}
 
+	/**
+	 * 维护活动
+	 */
+	@PostMapping("/activity")
+	public @ResponseBody Object save(Activity activity, int[] pids) {
+		System.out.println(pids);
+		skillService.saveActivity(activity,pids);
+		return AckMessage.ok();
+	}
+	
+	/**
+	 * 报告对象
+	 * @author cjl
+	 *
+	 */
 	class Report {
+		private int id;
 		private int orderCount;
 		private int productStock;
+		private String productName;
+		
+		public int getId() {
+			return id;
+		}
+
+		public void setId(int id) {
+			this.id = id;
+		}
+
+		public String getProductName() {
+			return productName;
+		}
+
+		public void setProductName(String productName) {
+			this.productName = productName;
+		}
 
 		public int getOrderCount() {
 			return orderCount;

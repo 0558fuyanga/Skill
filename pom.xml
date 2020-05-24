@@ -12,6 +12,7 @@
 		<version>2.1.7.RELEASE</version>
 		<relativePath />
 	</parent>
+
 	<properties>
 		<java.version>1.8</java.version>
 	</properties>
@@ -52,36 +53,13 @@
 		<dependency>
 			<groupId>mysql</groupId>
 			<artifactId>mysql-connector-java</artifactId>
-			<version>5.1.48</version>
 			<scope>runtime</scope>
 		</dependency>
 		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-data-redis</artifactId>
-		</dependency>
-		<dependency>
 			<groupId>org.apache.commons</groupId>
-			<artifactId>commons-pool2</artifactId>
+			<artifactId>commons-lang3</artifactId>
 		</dependency>
-		<!--zk -->
-		<!-- 对zookeeper的底层api的一些封装 -->
-		<dependency>
-			<groupId>org.apache.curator</groupId>
-			<artifactId>curator-framework</artifactId>
-			<version>2.12.0</version>
-		</dependency>
-		<!-- 封装了一些高级特性，如：Cache事件监听、选举、分布式锁、分布式Barrier -->
-		<dependency>
-			<groupId>org.apache.curator</groupId>
-			<artifactId>curator-recipes</artifactId>
-			<version>2.12.0</version>
-		</dependency>
-		<!-- mq -->
-		<dependency>
-			<groupId>org.apache.rocketmq</groupId>
-			<artifactId>rocketmq-client</artifactId>
-			<version>4.6.0</version>
-		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>

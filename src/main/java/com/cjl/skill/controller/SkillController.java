@@ -1,151 +1,158 @@
 package com.cjl.skill.controller;
 
-import java.util.Date;
-
-import javax.annotation.Resource;
-
-import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.recipes.cache.NodeCache;
-import org.apache.curator.framework.recipes.cache.NodeCacheListener;
-import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.ZooDefs;
+import java.util.ArrayList;
+import java.util.List;
+import javax.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
-
-import com.cjl.skill.mq.MqAsyncProducer;
+import com.cjl.skill.pojo.Activity;
+import com.cjl.skill.pojo.ActivityProduct;
 import com.cjl.skill.pojo.Address;
 import com.cjl.skill.pojo.Order;
 import com.cjl.skill.pojo.Product;
 import com.cjl.skill.pojo.User;
+import com.cjl.skill.service.ActivityProductService;
+import com.cjl.skill.service.ActivityService;
 import com.cjl.skill.service.OrderService;
 import com.cjl.skill.service.ProductService;
-import com.cjl.skill.util.ConstantUtil;
-import com.cjl.skill.util.JsonUtil;
-import com.cjl.skill.util.LocalCache;
+import com.cjl.skill.util.AckMessage;
+import com.cjl.skill.util.RequestHelper;
+import com.cjl.skill.vo.ProductActVo;
 
 @Controller
 public class SkillController {
-	
 	@Autowired
 	private OrderService orderService;
 
 	@Autowired
 	private ProductService productService;
 	
-	@Resource(name = "stringRedisTemplate")
-	private StringRedisTemplate stringRedisTemplate;
+	@Autowired
+	private ActivityService activityService;
 	
 	@Autowired
-	private CuratorFramework client;
-	
-	@Autowired
-	private MqAsyncProducer producer;
+	private ActivityProductService activityProductService;
 
+	/**
+	 * 返回整个中控页面
+	 * @param model
+	 * @return
+	 */
 	@GetMapping("/skill")
-	public String skillPage(@RequestParam(defaultValue = "1") int id, Model model) {
-		Product p = productService.getById(id);
-		model.addAttribute("p", p);
+	public String skillPage(Model model) {
+		//获取所有商品
+		List<Product> products = productService.getAll();
+		
+		//视图对象（里面多了一个属性）
+		List<ProductActVo> proActs = new ArrayList<ProductActVo>();
+		//初始化商品基本信息
+		for (Product p : products) {
+			ProductActVo pav = new ProductActVo();
+			pav.setId(p.getId());
+			//默认就是0
+			pav.setActId(0);
+			pav.setProductName(p.getProductName());
+			pav.setCreateTime(p.getCreateTime());
+			pav.setId(p.getId());
+			pav.setPrice(p.getPrice());
+			pav.setStatus(p.getStatus());
+			pav.setStock(p.getStock());
+			proActs.add(pav);
+		}
+		
+		//获取参加该活动的商品，为便于测试，默认活动id是1
+		List<ActivityProduct> aps =activityProductService.getByActId(1);
+		//设置活动标识
+		for (ActivityProduct activityProduct : aps) {
+			for(ProductActVo v : proActs) {
+				if(activityProduct.getProductId()==v.getId()) {
+					v.setActId(activityProduct.getActivityId());
+					break;
+				}
+			}
+		}
+		//添加vo对象到请求域，页面默认显示参加活动的商品进行业务测试
+		model.addAttribute("proActs", proActs);
+		
+		//获取秒杀活动信息,默认活动是1
+		Activity one = activityService.getOne(1);
+		
+		model.addAttribute("activity", one);
+		
 		return "skill";
 	}
 
+	/**
+	 * 秒杀接口
+	 * @param productId
+	 * @param session
+	 * @return
+	 */
 	@PostMapping("/skill")
-	public @ResponseBody String skill(int productId) {
-		//后台校验秒杀时间，省略。。。。。
+	public @ResponseBody Object skill(int productId) {
+		//后台校验秒杀时间
+		if(!validSkillTime(productId)) {
+			return AckMessage.error("time is error");
+		}
 		
 		//验证参数
 		if (productId <= 0) {
-			return "参数不合法";
+			return AckMessage.illegalArgs();
 		}
-		// 验证是否登陆
+		
+		//验证是否登陆
 		User user = getLoginUser();
 		if (user == null) {
-			return "没有登陆";
+			return AckMessage.unauthorized();
 		}
-		// 是否有默认收货地址
+		
+		//是否有默认收货地址
 		Address address = getUserDefaultAddress(user);
 		if (address == null) {
-			return "没有默认收货地址";
-		}
+			return new AckMessage<>(601,"没有默认收货地址");
+		}	
 		
-		//本地缓存拦截
-		if(LocalCache.soldOutProducts.get(productId)!=null) {
-			return "商品已售完";
-		}
-		
-		//拦截：缓存预减 (原子减法，没有并发问题)，但是有其他问题哦，退单时还原库存后，库存还是负数，会失效，例如减少到-100，怎么还原呢？？
-		Long stock = stringRedisTemplate.opsForValue().decrement(ConstantUtil.REDIS_KEY_STOCK_PREFIX+productId);
-		if(stock<0) {
-			//库存减少到负数时，还原库存，一次加1就行，维持整体公平原则就行，不需要考虑并发性还原问题
-			stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+productId);
-			//商品售完，添加本地缓存标记
-			LocalCache.soldOutProducts.put(productId, true);
-			//创建zknode和监听，同步各个本地缓存数据
-			zkCreateNode(productId);
-			return "商品已售完";
-		}
-		
+		//商品是否存在
 		Product product = productService.getById(productId);
 		if (product == null) {
-			return "商品不存在";
+			return new AckMessage<>(602,"商品不存在");
 		}
-
+		//检查库存
 		if (product.getStock() < 1) {
-			return "商品已经抢完了";
+			return new AckMessage<>(603,"商品已经抢完了");
 		}
 
-		// 同步生成订单
-		//return createOrder(product,address,user);
-		
-		//异步下单
-		return createMqOrder(product,address,user);
+		//同步生成订单
+		return createOrder(product,address,user);
 
 	}
 
-	//创建监听节点
-	private void zkCreateNode(int productId) {
+	//登录用户
+	@PostMapping("/login")
+	public @ResponseBody Object doLogin() {
+		User user = new User(1,"cjl");
+		HttpSession session = RequestHelper.getSession();
+		session.setAttribute("user", user);
+		return AckMessage.ok();
+	}
+	
+	//刷新指定商品的库存 restful接口风格，可读性好，语义化
+	@GetMapping("/refresh/{id}/stock")
+	public @ResponseBody Object refreshStock(@PathVariable int id) {
 		try {
-			//没有新建，就创建
-			if (client.checkExists().forPath(ConstantUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+productId)==null){
-			    client.create().creatingParentContainersIfNeeded()
-			            .withMode(CreateMode.PERSISTENT)
-			            .withACL(ZooDefs.Ids.OPEN_ACL_UNSAFE)
-			            .forPath(ConstantUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+productId,"true".getBytes());
-			    /*Curator之nodeCache一次注册，N次监听*/
-		        //为节点添加watcher
-		        //监听数据节点的变更，会触发事件
-		        NodeCache nodeCache = new NodeCache(client,ConstantUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+productId);
-		        //buildInitial: 初始化的时候获取node的值并且缓存
-		        nodeCache.start(true);
-		        nodeCache.getListenable().addListener(new NodeCacheListener() {
-		            public void nodeChanged() throws Exception {
-		                //获取当前数据
-		                String data = new String(nodeCache.getCurrentData().getData());
-		                System.out.println("节点路径为："+nodeCache.getCurrentData().getPath()+" 数据: "+data);
-		                //商品退单，撤销本地缓存标记
-		                if(nodeCache.getCurrentData().getData().toString().equals("false")) {
-		                	LocalCache.soldOutProducts.remove(productId);
-		                }else {
-		                	LocalCache.soldOutProducts.put(productId, true);
-		                }
-		            }
-		        });
-
-			}else {
-				//修改为true，因为其他机器可能是false，因为退单
-				client.setData()
-		        .forPath(ConstantUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+productId, "true".getBytes());
-			}
+			Product p = productService.getById(id);
+			return AckMessage.ok( p.getStock());
 		} catch (Exception e) {
 			e.printStackTrace();
+			return AckMessage.error();
 		}
 	}
-
+	
 	/**
 	 * 下单操作
 	 * @param p
@@ -153,67 +160,22 @@ public class SkillController {
 	 * @param user
 	 * @return
 	 */
-	public String createOrder(Product p, Address address, User user) {
+	private Object createOrder(Product p, Address address, User user) {
 		Order record = new Order();
-		record.setNote("购买时间：" + new Date());
+		record.setNote("秒杀下单测试");
 		record.setPrice(p.getPrice());
 		record.setProductId(p.getId());
 		record.setQuantity(1);
 		record.setUserId(user.getId());
 		record.setSum(p.getPrice());
+		record.setStatus("待付款");
 		try {
-			if(orderService.createSkillOrder(record)!=null)
-				return "ok";
-			else {
-				return renewStock(p);
-			}
+			orderService.createSkillOrder(record);
+			return AckMessage.ok();
 		} catch (Exception e) {
 			e.printStackTrace();
-			return renewStock(p);
+			return AckMessage.error();
 		}
-	}
-	
-	/**
-	 * mq异步下单操作
-	 * @param p
-	 * @param address
-	 * @param user
-	 * @return
-	 */
-	public String createMqOrder(Product p, Address address, User user) {
-		Order record = new Order();
-		record.setNote("购买时间：" + new Date());
-		record.setPrice(p.getPrice());
-		record.setProductId(p.getId());
-		record.setQuantity(1);
-		record.setUserId(user.getId());
-		record.setSum(p.getPrice());
-		//发送消息
-		producer.send(ConstantUtil.MQ_ORDER_TOPIC,
-				ConstantUtil.MQ_ORDER_TOPIC_TAG_1, 
-				user.getId().toString(), JsonUtil.obj2String(record));
-		
-		return "排队中";
-	}
-	
-	/**
-	 * 下单操作失败，返回库存
-	 * @param p
-	 * @return
-	 */
-	public String renewStock(Product p) {
-		//下单失败，退库存
-		stringRedisTemplate.opsForValue().increment(ConstantUtil.REDIS_KEY_STOCK_PREFIX+p.getId());
-		//商品退单，撤销本地缓存标记
-		LocalCache.soldOutProducts.remove(p.getId());
-		//修改zknode节点数据状态为 false
-		try {
-			client.setData()
-			.forPath(ConstantUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+p.getId(), "false".getBytes());
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		return "秒杀下单失败";
 	}
 
 	/**
@@ -232,7 +194,30 @@ public class SkillController {
 	 * @return
 	 */
 	private User getLoginUser() {
-		return new User(1, "killyou");
+		HttpSession session = RequestHelper.getSession();
+		Object user = session.getAttribute("user");
+		if(user!=null) {
+			return (User)user;
+		}else {
+			return null;
+		}
 	}
+	
+	/**
+	 * 校验秒杀时间
+	 * @param productId
+	 * @return
+	 */
+	private boolean validSkillTime(int productId) {
+		Activity one = activityService.getOne(productId);
+		long start = one.getStartTime().getTime();
+    	long end = one.getEndTime().getTime();
+    	long now = System.currentTimeMillis();
+    	if(now < start || now > end) {
+    		return false;
+    	}else  {
+    		return true;
+    	}
+    }
 
 }

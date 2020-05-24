@@ -16,9 +16,11 @@ public class Order implements Serializable {
 
     private Double sum;
 
-    private Date createTime;
+    private String status;
 
     private String note;
+
+    private Date createTime;
 
     private static final long serialVersionUID = 1L;
 
@@ -70,12 +72,12 @@ public class Order implements Serializable {
         this.sum = sum;
     }
 
-    public Date getCreateTime() {
-        return createTime;
+    public String getStatus() {
+        return status;
     }
 
-    public void setCreateTime(Date createTime) {
-        this.createTime = createTime;
+    public void setStatus(String status) {
+        this.status = status == null ? null : status.trim();
     }
 
     public String getNote() {
@@ -84,5 +86,13 @@ public class Order implements Serializable {
 
     public void setNote(String note) {
         this.note = note == null ? null : note.trim();
+    }
+
+    public Date getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(Date createTime) {
+        this.createTime = createTime;
     }
 }

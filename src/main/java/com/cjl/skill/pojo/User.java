@@ -10,19 +10,17 @@ public class User implements Serializable {
 
     private String password;
 
-    private Integer type;
-
     private Date lastLoginTime;
 
     private static final long serialVersionUID = 1L;
     
+    public User() {}
+
     public User(Integer id, String userName) {
 		this.id = id;
 		this.userName = userName;
 	}
 
-    public User() {}
-    
 	public Integer getId() {
         return id;
     }
@@ -45,14 +43,6 @@ public class User implements Serializable {
 
     public void setPassword(String password) {
         this.password = password == null ? null : password.trim();
-    }
-
-    public Integer getType() {
-        return type;
-    }
-
-    public void setType(Integer type) {
-        this.type = type;
     }
 
     public Date getLastLoginTime() {

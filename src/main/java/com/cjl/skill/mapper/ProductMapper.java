@@ -2,10 +2,8 @@ package com.cjl.skill.mapper;
 
 import java.util.List;
 
-import org.apache.ibatis.annotations.Mapper;
-
 import com.cjl.skill.pojo.Product;
-@Mapper
+
 public interface ProductMapper {
     int deleteByPrimaryKey(Integer id);
 
@@ -19,11 +17,13 @@ public interface ProductMapper {
 
     int updateByPrimaryKey(Product record);
     
-    int decreaseStock(Integer id);
-    
-    void deleteAll();
+    //custom
+	int decreaseStock(Integer productId);
 
-	int selectStockById(int id);
+	int selectStockById(int productId);
 
-	List<Product> selectSkillGoods();
+	List<Product> selectAll();
+	
+	//恢复库存为测试初始值10
+	int renewStock();
 }

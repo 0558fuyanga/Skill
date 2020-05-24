@@ -3,14 +3,14 @@ package com.cjl.skill.pojo;
 import java.io.Serializable;
 import java.util.Date;
 
-public class Product implements Serializable {
+public class Pay implements Serializable {
     private Integer id;
 
-    private String productName;
+    private Integer orderId;
 
-    private Integer stock;
+    private Integer tradeId;
 
-    private Double price;
+    private Double money;
 
     private String status;
 
@@ -26,28 +26,28 @@ public class Product implements Serializable {
         this.id = id;
     }
 
-    public String getProductName() {
-        return productName;
+    public Integer getOrderId() {
+        return orderId;
     }
 
-    public void setProductName(String productName) {
-        this.productName = productName == null ? null : productName.trim();
+    public void setOrderId(Integer orderId) {
+        this.orderId = orderId;
     }
 
-    public Integer getStock() {
-        return stock;
+    public Integer getTradeId() {
+        return tradeId;
     }
 
-    public void setStock(Integer stock) {
-        this.stock = stock;
+    public void setTradeId(Integer tradeId) {
+        this.tradeId = tradeId;
     }
 
-    public Double getPrice() {
-        return price;
+    public Double getMoney() {
+        return money;
     }
 
-    public void setPrice(Double price) {
-        this.price = price;
+    public void setMoney(Double money) {
+        this.money = money;
     }
 
     public String getStatus() {

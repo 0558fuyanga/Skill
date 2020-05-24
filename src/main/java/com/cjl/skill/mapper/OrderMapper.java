@@ -1,11 +1,7 @@
 package com.cjl.skill.mapper;
 
-import java.util.List;
-
-import org.apache.ibatis.annotations.Mapper;
-
 import com.cjl.skill.pojo.Order;
-@Mapper
+
 public interface OrderMapper {
     int deleteByPrimaryKey(Integer id);
 
@@ -18,12 +14,11 @@ public interface OrderMapper {
     int updateByPrimaryKeySelective(Order record);
 
     int updateByPrimaryKey(Order record);
-    
-    int deleteAll();
-    
-    List<Order> selectAll();
-
-	int selectCountByProductId(int productId);
 
 	int deleteByUserId(int userId);
+
+	//custom
+	int deleteAll();
+
+	int selectCountByProductId(int productId);
 }
