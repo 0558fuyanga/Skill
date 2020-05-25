@@ -261,7 +261,7 @@
 						success : function(data) {
 							if (data.status == 200) {
 								//alert('刷新库存成功')
-								domStock.innerHTML = data.data
+								document.getElementById("skillForm_"+id+"_stock").innerHTML = data.data
 							}else {
 								alert(data.message)
 							}
