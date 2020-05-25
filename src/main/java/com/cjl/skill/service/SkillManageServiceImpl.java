@@ -36,6 +36,7 @@ public class SkillManageServiceImpl implements SkillManageService {
 	 */
 	@Override
 	public void init() {
+		//删除订单和支付信息
 		orderMapper.deleteAll();
 		payMapper.deleteAll();
 

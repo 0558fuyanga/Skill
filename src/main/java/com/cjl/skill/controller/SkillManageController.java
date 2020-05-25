@@ -53,11 +53,13 @@ public class SkillManageController {
 	@GetMapping("/report")
 	public @ResponseBody Object reportSkill() {
 		try {
+			//定义一个秒杀报告集合
 			List<Report> reports = new ArrayList<SkillManageController.Report>();
-			
+			//参加活动商品的集合
 			List<ActivityProduct> list = activityProductService.getByActId(1);
 			for (ActivityProduct ap : list) {
 				int orderCount = skillService.getOrderCountByProductId(ap.getProductId());
+				//获取后动商品具体信息
 				Product p = productService.getById(ap.getProductId());
 				Report report = new Report();
 				report.setId(p.getId());
@@ -89,10 +91,10 @@ public class SkillManageController {
 	 *
 	 */
 	class Report {
-		private int id;
-		private int orderCount;
-		private int productStock;
-		private String productName;
+		private int id; //商品id
+		private int orderCount; //订单
+		private int productStock; //商品的库存
+		private String productName; //商品的名称
 		
 		public int getId() {
 			return id;

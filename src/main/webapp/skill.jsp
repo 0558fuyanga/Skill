@@ -230,7 +230,10 @@
 								//调用登录接口
 								login()
 							} 
-							else {
+							else if(data.status == 501){
+								alert(data.message)
+								refreshStock(id)
+							}else{
 								alert(data.message)
 							}
 						}
@@ -257,7 +260,8 @@
 						type : 'get',
 						success : function(data) {
 							if (data.status == 200) {
-								alert('刷新库存成功')
+								//alert('刷新库存成功')
+								domStock.innerHTML = data.data
 							}else {
 								alert(data.message)
 							}
@@ -326,13 +330,13 @@
 						type : 'get',
 						success : function(data) {
 							if (data.status == 200) {
-								let rps = $('#reports')
-								rps.empty()
+								let $rps = $('#reports')
+								$rps.empty()
 								for(let r of data.data){
-									//拼接字符串
+									//拼接字符串html
 									let str = "<p>商品名称："+r.productName+"</p>"+"<p>商品库存："+r.productStock+"</p>"+
 									"<p style='margin-bottom: 30px'>商品订单："+r.orderCount+"</p>"
-									rps.append(str)
+									$rps.append(str)
 								}
 							} else{
 								alert(data.message)

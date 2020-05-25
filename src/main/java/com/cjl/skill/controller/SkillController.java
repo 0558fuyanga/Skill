@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.cjl.skill.exception.OrderFailException;
 import com.cjl.skill.pojo.Activity;
 import com.cjl.skill.pojo.ActivityProduct;
 import com.cjl.skill.pojo.Address;
@@ -160,6 +162,7 @@ public class SkillController {
 	 * @param user
 	 * @return
 	 */
+	
 	private Object createOrder(Product p, Address address, User user) {
 		Order record = new Order();
 		record.setNote("秒杀下单测试");
@@ -172,9 +175,13 @@ public class SkillController {
 		try {
 			orderService.createSkillOrder(record);
 			return AckMessage.ok();
-		} catch (Exception e) {
+		}catch (OrderFailException sfe) {
+			sfe.printStackTrace();
+			return new AckMessage<>(501,sfe.getMessage());
+		}
+		catch (Exception e) {
 			e.printStackTrace();
-			return AckMessage.error();
+			return AckMessage.error(e.getMessage());
 		}
 	}
 
