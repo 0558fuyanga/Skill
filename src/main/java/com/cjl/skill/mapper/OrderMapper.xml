@@ -138,9 +138,10 @@
   </update>
   
   <!-- custome -->
-   <delete id="deleteAll" >
+  <delete id="deleteAll" >
     TRUNCATE  t_order
   </delete>
+  
   <select id="selectCountByProductId" parameterType="java.lang.Integer" resultType="int">
     select 
     count(id)

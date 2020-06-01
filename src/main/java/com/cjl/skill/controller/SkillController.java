@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.context.request.RequestContextHolder;
+
 import com.cjl.skill.pojo.Activity;
 import com.cjl.skill.pojo.ActivityProduct;
 import com.cjl.skill.pojo.Address;
@@ -136,10 +138,24 @@ public class SkillController {
 	public @ResponseBody Object doLogin() {
 		User user = new User(1,"cjl");
 		HttpSession session = RequestHelper.getSession();
+		//登录成功向session写入数据
 		session.setAttribute("user", user);
+		//无侵入性
+		//redis set key=jssessionid = new User()
+		//response.addCoolie()
+		
+		System.out.println("server port : "+RequestHelper.getRequest().getLocalPort()+". create session, sessionId is:" + session.getId());
 		return AckMessage.ok();
 	}
-	
+	//用户登出
+	@PostMapping("/logout")
+    public @ResponseBody Object logout() {
+        HttpSession session = RequestHelper.getSession();
+        //过期、失效
+        session.invalidate();
+        return AckMessage.ok();
+    }
+
 	//刷新指定商品的库存 restful接口风格，可读性好，语义化
 	@GetMapping("/refresh/{id}/stock")
 	public @ResponseBody Object refreshStock(@PathVariable int id) {

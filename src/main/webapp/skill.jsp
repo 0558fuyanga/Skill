@@ -87,7 +87,7 @@
 			<!-- 倒计时 -->
 			<div class="se-kl">
 		        <div class="se-cn">倒计时</div>
-		        <div class="se-en">COUNT DOWN</div>
+		       <!--  <div class="se-en">COUNT DOWN</div> -->
 		        <i class="se-io"></i>
 		        <div id="divSecSkillInfo" class="se-info">活动已经结束</div>
 		        <div class="se-count">
@@ -226,28 +226,12 @@
 								domStock.innerHTML = parseInt(domStock.innerHTML) - 1
 							}else if(data.status == 401){
 								//未登录，模拟登录，1秒后自动登录
-								alert('未登录错误，1秒后模拟用户自动登录')
-								//调用登录接口
-								login()
+								alert('未登录错误，请登录')
 							} 
 							else if(data.status == 501){
 								alert(data.message)
 								refreshStock(id)
 							}else{
-								alert(data.message)
-							}
-						}
-					})
-				}
-				//登录接口
-				function login(){
-					$.ajax({
-						url : '/login',
-						type : 'post',
-						success : function(data) {
-							if (data.status == 200) {
-								alert('登录成功')
-							}else {
 								alert(data.message)
 							}
 						}
@@ -269,6 +253,42 @@
 					})
 				}
 			</script>
+		
+			<!-- 用户登录管理 -->
+			<div style="margin-top: 30px;">
+				<a href="javascript:login();">登录</a>&nbsp;
+				<a href="javascript:logout();">登出</a>&nbsp;
+				<script type="text/javascript">
+					//登录接口
+					function login(){
+						$.ajax({
+							url : '/login',
+							type : 'post',
+							success : function(data) {
+								if (data.status == 200) {
+									alert('登录成功')
+								}else {
+									alert(data.message)
+								}
+							}
+						})
+					}
+					//登出
+					function logout(){
+						$.ajax({
+							url : '/logout',
+							type : 'post',
+							success : function(data) {
+								if (data.status == 200) {
+									alert('登出成功')
+								}else {
+									alert(data.message)
+								}
+							}
+						})
+					}
+				</script>
+			</div>
 		</div>
 		<!-- 压测管理 -->
 		<div style="float: right; width: 33%; text-align: center; margin-top: 60px; border: 1px solid black; font-size: 14px;">
@@ -276,7 +296,7 @@
 			<div style="margin-bottom: 60px">
 				<a href="javascript:initData();">初始化商品数据</a>&nbsp;
 				<a href="javascript:loadStock();">预热商品库存数据</a>&nbsp;
-				<a href="javascript:clearCache();">清除本地缓存数据</a>&nbsp;
+				<a href="javascript:clearCache();">清除本地缓存数据</a><br/>
 				<script type="text/javascript">
 					function initData(){
 						$.ajax({
