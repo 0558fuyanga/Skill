@@ -22,16 +22,17 @@ public class SkillStart {
 	 * 
 	 * @return
 	 */
-
 	@Bean
 	public CookieSerializer defaultCookieSerializer() {
 		DefaultCookieSerializer serializer = new DefaultCookieSerializer();
 	    serializer.setCookieName("JSESSIONID");
 	    serializer.setCookiePath("/");
-	    //serializer.setDomainNamePattern("^.+?\\.(\\w+\\.[a-z]+)$");
-	    serializer.setDomainName("go8.com");
+	    serializer.setDomainNamePattern("^.+?\\.(\\w+\\.[a-z]+)$");
+	    //serializer.setDomainName("go8.com");
 	    //取消站点限制
-	    //serializer.setSameSite(null);
+	    serializer.setSameSite(null);
+	    serializer.setUseSecureCookie(false);
+	    serializer.setUseHttpOnlyCookie(true);
 	    return serializer;
 	}
 
@@ -40,7 +41,6 @@ public class SkillStart {
 	 * 
 	 * @return
 	 */
-
 	@Bean
 	public GenericJackson2JsonRedisSerializer springSessionDefaultRedisSerializer() {
 		return new GenericJackson2JsonRedisSerializer();

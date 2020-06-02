@@ -26,4 +26,7 @@ public interface ProductMapper {
 	
 	//恢复库存为测试初始值10
 	int renewStock();
+	
+	//查询所有参加秒杀活动的商品
+	List<Product> selectProductIdAndStock();
 }

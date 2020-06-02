@@ -127,4 +127,8 @@
     update t_product
     set stock = 10
   </update>
+  
+  <select id="selectProductIdAndStock"  resultMap="BaseResultMap">
+   	select p.id,p.stock from t_activity_product ap left join t_product p on ap.product_id=p.id
+  </select>
 </mapper>

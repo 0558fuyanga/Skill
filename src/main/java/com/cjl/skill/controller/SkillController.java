@@ -3,7 +3,10 @@ package com.cjl.skill.controller;
 import java.util.ArrayList;
 import java.util.List;
 import javax.servlet.http.HttpSession;
+
+import org.apache.tomcat.util.bcel.classfile.ConstantUtf8;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,6 +26,7 @@ import com.cjl.skill.service.ActivityService;
 import com.cjl.skill.service.OrderService;
 import com.cjl.skill.service.ProductService;
 import com.cjl.skill.util.AckMessage;
+import com.cjl.skill.util.ConstantPrefixUtil;
 import com.cjl.skill.util.RequestHelper;
 import com.cjl.skill.vo.ProductActVo;
 
@@ -39,6 +43,9 @@ public class SkillController {
 	
 	@Autowired
 	private ActivityProductService activityProductService;
+	
+	@Autowired
+	private StringRedisTemplate stringRedisTemplate;
 
 	/**
 	 * 返回整个中控页面
@@ -118,11 +125,20 @@ public class SkillController {
 			return new AckMessage<>(601,"没有默认收货地址");
 		}	
 		
+		//redis来减轻数据库的压力：10w QPS，原子减，串行执行
+		Long result = stringRedisTemplate.opsForValue().decrement(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX+productId);
+		if(result < 0) {
+			//还原负数
+			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX+productId);
+			return new AckMessage<>(603,"商品已经抢完了");
+		}
+		
 		//商品是否存在
 		Product product = productService.getById(productId);
 		if (product == null) {
 			return new AckMessage<>(602,"商品不存在");
 		}
+		
 		//检查库存
 		if (product.getStock() < 1) {
 			return new AckMessage<>(603,"商品已经抢完了");
@@ -189,18 +205,19 @@ public class SkillController {
 			return AckMessage.ok();
 		}
 		catch (Exception e) {
-			//e.printStackTrace();
+			//异常情况，退库存
+			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX+p.getId());
 			return AckMessage.error(e.getMessage());
 		}
 	}
 
 	/**
 	 * 获取默认收货地址
-	 * 
 	 * @param user
 	 * @return
 	 */
 	private Address getUserDefaultAddress(User user) {
+		//登录之后，把用户的默认地址放到缓存中，一般是redis中
 		return new Address(1, "中国", user.getId(), true);
 	}
 
@@ -225,6 +242,8 @@ public class SkillController {
 	 * @return
 	 */
 	private boolean validSkillTime(int productId) {
+		//优化第一步，把时间放到缓存中，具体的放到redis中
+		
 		Activity one = activityService.getOne(productId);
 		long start = one.getStartTime().getTime();
     	long end = one.getEndTime().getTime();

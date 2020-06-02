@@ -314,8 +314,8 @@
 							url : '/admin/skill/load/stock',
 							type : 'get',
 							success : function(data) {
-								if (data == 'ok') {
-									location.href='/skill'
+								if (data.status == 200) {
+									//location.href='/skill'
 								} else{alert('失败')}
 							}
 						})
