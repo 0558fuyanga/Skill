@@ -41,7 +41,7 @@ public class OrderServiceImpl implements OrderService {
 				order.setId(0);
 				return order;
 			}
-			if ("1".equals("1")) throw new OrderFailException(); 
+			//if ("1".equals("1")) throw new OrderFailException(); 
 			// 成功就下单
 			orderMapper.insertSelective(order);
 			return order;

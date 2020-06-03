@@ -4,7 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 import javax.servlet.http.HttpSession;
 
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.recipes.cache.NodeCache;
+import org.apache.curator.framework.recipes.cache.NodeCacheListener;
 import org.apache.tomcat.util.bcel.classfile.ConstantUtf8;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.ZooDefs;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Controller;
@@ -15,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.request.RequestContextHolder;
 
+import com.cjl.skill.cache.LocalCache;
 import com.cjl.skill.pojo.Activity;
 import com.cjl.skill.pojo.ActivityProduct;
 import com.cjl.skill.pojo.Address;
@@ -37,33 +43,37 @@ public class SkillController {
 
 	@Autowired
 	private ProductService productService;
-	
+
 	@Autowired
 	private ActivityService activityService;
-	
+
 	@Autowired
 	private ActivityProductService activityProductService;
-	
+
 	@Autowired
 	private StringRedisTemplate stringRedisTemplate;
 
+	@Autowired
+	private CuratorFramework client;
+
 	/**
 	 * 返回整个中控页面
+	 * 
 	 * @param model
 	 * @return
 	 */
 	@GetMapping("/skill")
 	public String skillPage(Model model) {
-		//获取所有商品
+		// 获取所有商品
 		List<Product> products = productService.getAll();
-		
-		//视图对象（里面多了一个属性）
+
+		// 视图对象（里面多了一个属性）
 		List<ProductActVo> proActs = new ArrayList<ProductActVo>();
-		//初始化商品基本信息
+		// 初始化商品基本信息
 		for (Product p : products) {
 			ProductActVo pav = new ProductActVo();
 			pav.setId(p.getId());
-			//默认就是0
+			// 默认就是0
 			pav.setActId(0);
 			pav.setProductName(p.getProductName());
 			pav.setCreateTime(p.getCreateTime());
@@ -73,119 +83,135 @@ public class SkillController {
 			pav.setStock(p.getStock());
 			proActs.add(pav);
 		}
-		
-		//获取参加该活动的商品，为便于测试，默认活动id是1
-		List<ActivityProduct> aps =activityProductService.getByActId(1);
-		//设置活动标识
+
+		// 获取参加该活动的商品，为便于测试，默认活动id是1
+		List<ActivityProduct> aps = activityProductService.getByActId(1);
+		// 设置活动标识
 		for (ActivityProduct activityProduct : aps) {
-			for(ProductActVo v : proActs) {
-				if(activityProduct.getProductId()==v.getId()) {
+			for (ProductActVo v : proActs) {
+				if (activityProduct.getProductId() == v.getId()) {
 					v.setActId(activityProduct.getActivityId());
 					break;
 				}
 			}
 		}
-		//添加vo对象到请求域，页面默认显示参加活动的商品进行业务测试
+		// 添加vo对象到请求域，页面默认显示参加活动的商品进行业务测试
 		model.addAttribute("proActs", proActs);
-		
-		//获取秒杀活动信息,默认活动是1
+
+		// 获取秒杀活动信息,默认活动是1
 		Activity one = activityService.getOne(1);
-		
+
 		model.addAttribute("activity", one);
-		
+
 		return "skill";
 	}
 
 	/**
 	 * 秒杀接口
+	 * 
 	 * @param productId
 	 * @return
 	 */
 	@PostMapping("/skill")
 	public @ResponseBody Object skill(int productId) {
-		//后台校验秒杀时间
-		if(!validSkillTime(productId)) {
+
+		// 做商品售完判断，拦截无效的请求
+		if (LocalCache.SOLD_OUT_FLAGS.get(String.valueOf(productId)) != null) {
+			return new AckMessage<>(603, "商品已经抢完了");
+		}
+
+		// 后台校验秒杀时间
+		if (!validSkillTime(productId)) {
 			return AckMessage.error("time is error");
 		}
-		
-		//验证参数
+
+		// 验证参数
 		if (productId <= 0) {
 			return AckMessage.illegalArgs();
 		}
-		
-		//验证是否登陆
+
+		// 验证是否登陆
 		User user = getLoginUser();
 		if (user == null) {
 			return AckMessage.unauthorized();
 		}
-		
-		//是否有默认收货地址
+
+		// 是否有默认收货地址
 		Address address = getUserDefaultAddress(user);
 		if (address == null) {
-			return new AckMessage<>(601,"没有默认收货地址");
-		}	
-		
-		//redis来减轻数据库的压力：10w QPS，原子减，串行执行
-		Long result = stringRedisTemplate.opsForValue().decrement(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX+productId);
-		if(result < 0) {
-			//还原负数
-			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX+productId);
-			return new AckMessage<>(603,"商品已经抢完了");
+			return new AckMessage<>(601, "没有默认收货地址");
 		}
-		
-		//商品是否存在
+
+		// redis来减轻数据库的压力：10w QPS，原子减，串行执行
+		Long result = stringRedisTemplate.opsForValue().decrement(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX+ productId);
+		if (result < 0) {
+			// 还原负数
+			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX + productId);
+			// 添加售完标记
+			LocalCache.SOLD_OUT_FLAGS.put(String.valueOf(productId), true);
+
+			//创建zk售完标记节点
+			createZkNode(productId);
+			
+			return new AckMessage<>(603, "商品已经抢完了");
+		}
+
+		// 商品是否存在
 		Product product = productService.getById(productId);
 		if (product == null) {
-			return new AckMessage<>(602,"商品不存在");
-		}
-		
-		//检查库存
-		if (product.getStock() < 1) {
-			return new AckMessage<>(603,"商品已经抢完了");
+			return new AckMessage<>(602, "商品不存在");
 		}
 
-		//同步生成订单
-		return createOrder(product,address,user);
+		// 检查库存
+		if (product.getStock() < 1) {
+			return new AckMessage<>(603, "商品已经抢完了");
+		}
+
+		// 同步生成订单
+		return createOrder(product, address, user);
 
 	}
 
-	//登录用户
+	// 登录用户
 	@PostMapping("/login")
 	public @ResponseBody Object doLogin() {
-		User user = new User(1,"cjl");
+		User user = new User(1, "cjl");
 		HttpSession session = RequestHelper.getSession();
-		//登录成功向session写入数据
+		// 登录成功向session写入数据
 		session.setAttribute("user", user);
-		//无侵入性
-		//redis set key=jssessionid = new User()
-		//response.addCoolie()
-		
-		System.out.println("server port : "+RequestHelper.getRequest().getLocalPort()+". create session, sessionId is:" + session.getId());
+		// 无侵入性
+		// redis set key=jssessionid = new User()
+		// response.addCoolie()
+
+		System.out.println("server port : " + RequestHelper.getRequest().getLocalPort()
+				+ ". create session, sessionId is:" + session.getId());
 		return AckMessage.ok();
 	}
-	//用户登出
-	@PostMapping("/logout")
-    public @ResponseBody Object logout() {
-        HttpSession session = RequestHelper.getSession();
-        //过期、失效
-        session.invalidate();
-        return AckMessage.ok();
-    }
 
-	//刷新指定商品的库存 restful接口风格，可读性好，语义化
+	// 用户登出
+	@PostMapping("/logout")
+	public @ResponseBody Object logout() {
+		HttpSession session = RequestHelper.getSession();
+		// 过期、失效
+		session.invalidate();
+		return AckMessage.ok();
+	}
+
+	// 刷新指定商品的库存 restful接口风格，可读性好，语义化
 	@GetMapping("/refresh/{id}/stock")
 	public @ResponseBody Object refreshStock(@PathVariable int id) {
 		try {
 			Product p = productService.getById(id);
-			return AckMessage.ok( p.getStock());
+			return AckMessage.ok(p.getStock());
 		} catch (Exception e) {
 			e.printStackTrace();
 			return AckMessage.error();
 		}
 	}
-	
+
 	/**
 	 * 下单操作
+	 * 
 	 * @param p
 	 * @param address
 	 * @param user
@@ -203,21 +229,29 @@ public class SkillController {
 		try {
 			orderService.createSkillOrder(record);
 			return AckMessage.ok();
-		}
-		catch (Exception e) {
+		} catch (Exception e) {
 			//异常情况，退库存
-			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX+p.getId());
+			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX +p.getId());
+			//清除售完标记
+			LocalCache.SOLD_OUT_FLAGS.remove(String.valueOf(p.getId()));
+			//删除节点标记
+			try {
+				client.delete().forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+"/"+p.getId());
+			} catch (Exception e1) {
+				e1.printStackTrace();
+			}
 			return AckMessage.error(e.getMessage());
 		}
 	}
 
 	/**
 	 * 获取默认收货地址
+	 * 
 	 * @param user
 	 * @return
 	 */
 	private Address getUserDefaultAddress(User user) {
-		//登录之后，把用户的默认地址放到缓存中，一般是redis中
+		// 登录之后，把用户的默认地址放到缓存中，一般是redis中
 		return new Address(1, "中国", user.getId(), true);
 	}
 
@@ -229,30 +263,47 @@ public class SkillController {
 	private User getLoginUser() {
 		HttpSession session = RequestHelper.getSession();
 		Object user = session.getAttribute("user");
-		if(user!=null) {
-			return (User)user;
-		}else {
+		if (user != null) {
+			return (User) user;
+		} else {
 			return null;
 		}
 	}
-	
+
 	/**
 	 * 校验秒杀时间
+	 * 
 	 * @param productId
 	 * @return
 	 */
 	private boolean validSkillTime(int productId) {
-		//优化第一步，把时间放到缓存中，具体的放到redis中
-		
+		// 优化第一步，把时间放到缓存中，具体的放到redis中
+
 		Activity one = activityService.getOne(productId);
 		long start = one.getStartTime().getTime();
-    	long end = one.getEndTime().getTime();
-    	long now = System.currentTimeMillis();
-    	if(now < start || now > end) {
-    		return false;
-    	}else  {
-    		return true;
-    	}
-    }
+		long end = one.getEndTime().getTime();
+		long now = System.currentTimeMillis();
+		if (now < start || now > end) {
+			return false;
+		} else {
+			return true;
+		}
+	}
 
+	//创建zknode，用于同步jvm缓存
+	private void createZkNode(int productId) {
+		try {
+			//没有就创建
+			if (client.checkExists().forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH +"/"+ productId) == null) {
+				client.create().creatingParentContainersIfNeeded().withMode(CreateMode.PERSISTENT)
+						.withACL(ZooDefs.Ids.OPEN_ACL_UNSAFE)
+						.forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH +"/"+ productId);
+			} else {
+				//有人退单了，后面的线程又抢掉了这个库存，之后；注意这个细节。
+				client.setData().forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH +"/"+ productId);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
 }
