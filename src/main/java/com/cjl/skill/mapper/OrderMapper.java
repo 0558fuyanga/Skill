@@ -1,5 +1,7 @@
 package com.cjl.skill.mapper;
 
+import org.apache.ibatis.annotations.Param;
+
 import com.cjl.skill.pojo.Order;
 
 public interface OrderMapper {
@@ -21,4 +23,6 @@ public interface OrderMapper {
 	int deleteAll();
 
 	int selectCountByProductId(int productId);
+
+	Order selectByUserAndProductId(@Param("userId") int userId,@Param("productId") int productId);
 }

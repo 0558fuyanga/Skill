@@ -2,6 +2,8 @@ package com.cjl.skill.controller;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+
 import javax.servlet.http.HttpSession;
 
 import org.apache.curator.framework.CuratorFramework;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.request.RequestContextHolder;
 
 import com.cjl.skill.cache.LocalCache;
+import com.cjl.skill.mq.MQProducer;
 import com.cjl.skill.pojo.Activity;
 import com.cjl.skill.pojo.ActivityProduct;
 import com.cjl.skill.pojo.Address;
@@ -33,6 +36,7 @@ import com.cjl.skill.service.OrderService;
 import com.cjl.skill.service.ProductService;
 import com.cjl.skill.util.AckMessage;
 import com.cjl.skill.util.ConstantPrefixUtil;
+import com.cjl.skill.util.JsonUtil;
 import com.cjl.skill.util.RequestHelper;
 import com.cjl.skill.vo.ProductActVo;
 
@@ -142,17 +146,31 @@ public class SkillController {
 			return new AckMessage<>(601, "没有默认收货地址");
 		}
 
+		// 一个人一个商品只能下一次单
+		String json = stringRedisTemplate.opsForValue()
+				.get(ConstantPrefixUtil.REDIS_ORDER_SUCCESS_FLAG_PREFIX + user.getId() + ":" + productId);
+		if (json != null) {
+			return new AckMessage<>(201, "亲，该商品已经秒杀过了");
+		}
+
+		//设置redis订单排队标记，分布式锁功能，保证同一用户同一商品只能秒杀成功一次，没有抢到锁的同学，说明前面自己已经在排队了
+		//设置超时时间防止死锁
+		if (!stringRedisTemplate.opsForValue().setIfAbsent(ConstantPrefixUtil.REDIS_ORDER_QUEUE_FLAG_PREFIX + user.getId() + ":" + productId,
+				"queue", 60, TimeUnit.SECONDS)) {
+			return new AckMessage<>(200, "亲，您正在排队中，请耐心等待哦");
+		}
+
 		// redis来减轻数据库的压力：10w QPS，原子减，串行执行
-		Long result = stringRedisTemplate.opsForValue().decrement(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX+ productId);
+		Long result = stringRedisTemplate.opsForValue().decrement(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX + productId);
 		if (result < 0) {
 			// 还原负数
 			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX + productId);
 			// 添加售完标记
 			LocalCache.SOLD_OUT_FLAGS.put(String.valueOf(productId), true);
 
-			//创建zk售完标记节点
+			// 创建zk售完标记节点
 			createZkNode(productId);
-			
+
 			return new AckMessage<>(603, "商品已经抢完了");
 		}
 
@@ -168,8 +186,77 @@ public class SkillController {
 		}
 
 		// 同步生成订单
-		return createOrder(product, address, user);
+		// return createOrder(product, address, user);
 
+		// 异步下单，成功排队
+		return createAsyncOrder(product, address, user);
+
+	}
+
+	// 查询订单接口 
+	@GetMapping("/order/query")
+	public @ResponseBody Object getOrderResult(int productId) {
+		// 验证参数
+		if (productId <= 0) {
+			return AckMessage.illegalArgs();
+		}
+
+		// 验证是否登陆
+		User user = getLoginUser();
+		if (user == null) {
+			return AckMessage.unauthorized();
+		}
+		// 查看是否在排队
+		if (stringRedisTemplate.opsForValue()
+				.get(ConstantPrefixUtil.REDIS_ORDER_QUEUE_FLAG_PREFIX + user.getId() + ":" + productId) != null) {
+			return AckMessage.ok("queue");
+		}
+		// 查看是否下单成功
+		try {
+			// 使用缓存挡住
+			String json = stringRedisTemplate.opsForValue()
+					.get(ConstantPrefixUtil.REDIS_ORDER_SUCCESS_FLAG_PREFIX + user.getId() + ":" + productId);
+			return AckMessage.ok(json);
+		} catch (Exception e) {
+			e.printStackTrace();
+			// 查数据库
+			Order order = orderService.getOrderByUserAndProductId(user.getId(), productId);
+			// 返回结果
+			return AckMessage.ok(order);
+		}
+	}
+
+	// 异步下单
+	private Object createAsyncOrder(Product p, Address address, User user) {
+		Order record = new Order();
+		record.setNote("秒杀下单测试");
+		record.setPrice(p.getPrice());
+		record.setProductId(p.getId());
+		record.setQuantity(1);
+		record.setUserId(user.getId());
+		record.setSum(p.getPrice());
+		record.setStatus("待付款");
+		try {
+			// 发送消息
+			MQProducer producer = new MQProducer();
+			producer.sendMessage("order_group", "order_topic", "order_tag", JsonUtil.obj2String(record).getBytes());
+			System.out.println("send order message success.");
+			return new AckMessage<>(200,"排队中。。。。。。。。。。");
+		} catch (Exception e) {
+			// 异常情况，退库存
+			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX + p.getId());
+			// 清除售完标记
+			LocalCache.SOLD_OUT_FLAGS.remove(String.valueOf(p.getId()));
+			// 删除节点标记
+			try {
+				client.delete().forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH + "/" + p.getId());
+			} catch (Exception e1) {
+				e1.printStackTrace();
+			}
+			//清除订单排队标记
+			stringRedisTemplate.delete(ConstantPrefixUtil.REDIS_ORDER_QUEUE_FLAG_PREFIX + user.getId() + ":" + p.getId());
+			return AckMessage.error("下单失败");
+		}
 	}
 
 	// 登录用户
@@ -230,13 +317,13 @@ public class SkillController {
 			orderService.createSkillOrder(record);
 			return AckMessage.ok();
 		} catch (Exception e) {
-			//异常情况，退库存
-			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX +p.getId());
-			//清除售完标记
+			// 异常情况，退库存
+			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX + p.getId());
+			// 清除售完标记
 			LocalCache.SOLD_OUT_FLAGS.remove(String.valueOf(p.getId()));
-			//删除节点标记
+			// 删除节点标记
 			try {
-				client.delete().forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH+"/"+p.getId());
+				client.delete().forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH + "/" + p.getId());
 			} catch (Exception e1) {
 				e1.printStackTrace();
 			}
@@ -290,17 +377,18 @@ public class SkillController {
 		}
 	}
 
-	//创建zknode，用于同步jvm缓存
+	// 创建zknode，用于同步jvm缓存
 	private void createZkNode(int productId) {
 		try {
-			//没有就创建
-			if (client.checkExists().forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH +"/"+ productId) == null) {
+			// 没有就创建
+			if (client.checkExists()
+					.forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH + "/" + productId) == null) {
 				client.create().creatingParentContainersIfNeeded().withMode(CreateMode.PERSISTENT)
 						.withACL(ZooDefs.Ids.OPEN_ACL_UNSAFE)
-						.forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH +"/"+ productId);
+						.forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH + "/" + productId);
 			} else {
-				//有人退单了，后面的线程又抢掉了这个库存，之后；注意这个细节。
-				client.setData().forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH +"/"+ productId);
+				// 有人退单了，后面的线程又抢掉了这个库存，之后；注意这个细节。
+				client.setData().forPath(ConstantPrefixUtil.ZK_SOLD_OUT_PRODUCT_ROOT_PATH + "/" + productId);
 			}
 		} catch (Exception e) {
 			e.printStackTrace();

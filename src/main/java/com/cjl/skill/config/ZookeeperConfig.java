@@ -41,6 +41,9 @@ public class ZookeeperConfig {
 			@Override
 			public void childEvent(CuratorFramework client, TreeCacheEvent event) throws Exception {
 				ChildData eventData = event.getData();
+				if(eventData==null) {
+					return;
+				}
 				String full = eventData.getPath();
 				String id = full.substring(full.lastIndexOf("/")+1);
                 switch (event.getType()) {

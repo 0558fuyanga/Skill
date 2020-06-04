@@ -218,14 +218,20 @@
 						type : 'post',
 						data: "productId="+id,
 						success : function(data) {
-							if (data.status == 200) {
-								alert('秒杀成功，请在30分钟内完成支付')
+							if(data.status == 201){
+								alert(data.message)
+							}
+							else if (data.status == 200) {
+								//开始查询订单
+								queryOrder(id)
+								//弹出友好排队提示
+								alert(data.message)
+								
+								//alert('秒杀成功，请在30分钟内完成支付')
 								//location.href='/skill'
-								//局部刷新库存，仅用于测试skillForm_${p.id}_stock
-								let domStock = document.getElementById("skillForm_"+id+"_stock")
-								domStock.innerHTML = parseInt(domStock.innerHTML) - 1
+								
 							}else if(data.status == 401){
-								//未登录，模拟登录，1秒后自动登录
+								//未登录
 								alert('未登录错误，请登录')
 							} 
 							else if(data.status == 501){
@@ -248,6 +254,42 @@
 								document.getElementById("skillForm_"+id+"_stock").innerHTML = data.data
 							}else {
 								alert(data.message)
+							}
+						}
+					})
+				}
+				//定义一个订单查询定时器
+				var ordertimer
+				//查询订单
+				function queryOrder(id){
+					$.ajax({
+						url : '/order/query',
+						type : 'get',
+						data: "productId="+id,
+						success : function(data) {
+							if (data.status == 200 && data.data == 'queue') {
+								//继续查询，间隔1秒
+								if(!ordertimer)
+									ordertimer = setInterval("queryOrder("+id+")", 1000)
+							}else if(data.status == 200 && data.data){
+								//清除定时器
+								if(ordertimer){
+									clearInterval(ordertimer)
+									ordertimer=null
+								}
+								//下单成功
+								console.log(data.data)
+								//局部刷新库存，仅用于测试skillForm_${p.id}_stock
+								let domStock = document.getElementById("skillForm_"+id+"_stock")
+								domStock.innerHTML = parseInt(domStock.innerHTML) - 1
+								alert('下单成功，正跳转至支付页面。。。。。')
+							}else{
+								//清除定时器
+								if(ordertimer){
+									clearInterval(ordertimer)
+									ordertimer=null
+								}
+								alert('下单失败')
 							}
 						}
 					})

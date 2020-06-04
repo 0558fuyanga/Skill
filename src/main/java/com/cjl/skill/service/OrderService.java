@@ -8,4 +8,6 @@ public interface OrderService {
 	//创建秒杀订单
 	Order createSkillOrder(Order order);
 
+	Order getOrderByUserAndProductId(int userId, int productId);
+
 }
