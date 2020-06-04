@@ -114,7 +114,11 @@
 								<td>库存：<span id="skillForm_${p.id}_stock">${p.stock}</span></td>
 							</tr>
 							<tr>
-								<td><input class="cls_btnSecKill" id="btnSecKill" type="button" value="秒杀" onclick="skill(${p.id})" /></td>
+								<td>
+								<input class="cls_btnSecKill" id="btnSecKill" type="button" value="秒杀" onclick="skill(${p.id})" />
+								<input id="verifyCode"  size="6" maxlength="6"  style="display:none" />
+								<img id="verifyCodeImg" width="80" height="30"  style="display:none" onclick="refreshVerifyCode(${p.id})"/>
+								</td>
 							</tr>
 						</table>
 					</form>
@@ -210,6 +214,52 @@
 		        function tow(n) {
 		            return n >= 0 && n < 10 ? '0' + n : '' + n;
 		        }
+		      //获取秒杀地址
+		        function getMiaoshaToken(){
+		        	var productId = $("#productId").val();
+		        	g_showLoading();
+		        	$.ajax({
+		        		url:"${basepath}/miaosha/token",
+		        		type:"GET",
+		        		data:{
+		        			productId:productId,
+		        			verifyCode:$("#verifyCode").val()
+		        		},
+		        		success:function(data){
+		        			if(data.code == 0){
+		        				var token = data.data;
+		        				doMiaosha(token);
+		        			}else{
+		        				layer.msg(data.msg);
+		        			}
+		        		},
+		        		error:function(){
+		        			layer.msg("客户端请求有误");
+		        		}
+		        	});
+		        }
+
+		        //秒杀接口2.0
+		        function doMiaosha(token){
+		        	$.ajax({
+		        		url:"${basepath}/miaosha/"+token+"/confirm",
+		        		type:"POST",
+		        		data:{
+		        			productId:$("#productId").val(),
+		        		},
+		        		success:function(data){
+		        			if(data.code == 0){
+		        				//window.location.href="${basepath}/paygate/pay?orderId="+data.data.id + "&orderPayId="+data.data.orderpayID;
+		        				getMiaoshaResult($("#productId").val());
+		        			}else{
+		        				layer.msg(data.msg);
+		        			}
+		        		},
+		        		error:function(){
+		        			layer.msg("客户端请求有误");
+		        		}
+		        	});
+		        }
 
 		        //秒杀接口1.0
 				function skill(id){
@@ -294,6 +344,9 @@
 						}
 					})
 				}
+				function refreshVerifyCode(id){
+					$("#verifyCodeImg").attr("src", "/verifyCode?productId="+id+"&timestamp="+new Date().getTime());
+				}
 			</script>
 		
 			<!-- 用户登录管理 -->
@@ -308,6 +361,8 @@
 							type : 'post',
 							success : function(data) {
 								if (data.status == 200) {
+									$("#verifyCodeImg").show();
+									$("#verifyCode").show();
 									alert('登录成功')
 								}else {
 									alert(data.message)
@@ -322,6 +377,8 @@
 							type : 'post',
 							success : function(data) {
 								if (data.status == 200) {
+									$("#verifyCodeImg").hide();
+									$("#verifyCode").hide();
 									alert('登出成功')
 								}else {
 									alert(data.message)

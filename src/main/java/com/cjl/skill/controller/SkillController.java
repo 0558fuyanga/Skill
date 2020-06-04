@@ -1,27 +1,30 @@
 package com.cjl.skill.controller;
 
+import java.awt.image.BufferedImage;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import javax.imageio.ImageIO;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-
 import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.recipes.cache.NodeCache;
-import org.apache.curator.framework.recipes.cache.NodeCacheListener;
 import org.apache.tomcat.util.bcel.classfile.ConstantUtf8;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.ZooDefs;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DigestUtils;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.context.request.RequestContextHolder;
-
 import com.cjl.skill.cache.LocalCache;
 import com.cjl.skill.mq.MQProducer;
 import com.cjl.skill.pojo.Activity;
@@ -38,6 +41,7 @@ import com.cjl.skill.util.AckMessage;
 import com.cjl.skill.util.ConstantPrefixUtil;
 import com.cjl.skill.util.JsonUtil;
 import com.cjl.skill.util.RequestHelper;
+import com.cjl.skill.vcode.VerifyCode;
 import com.cjl.skill.vo.ProductActVo;
 
 @Controller
@@ -111,7 +115,7 @@ public class SkillController {
 	}
 
 	/**
-	 * 秒杀接口
+	 * 秒杀接口1.0
 	 * 
 	 * @param productId
 	 * @return
@@ -139,6 +143,94 @@ public class SkillController {
 		if (user == null) {
 			return AckMessage.unauthorized();
 		}
+
+		// 是否有默认收货地址
+		Address address = getUserDefaultAddress(user);
+		if (address == null) {
+			return new AckMessage<>(601, "没有默认收货地址");
+		}
+
+		// 一个人一个商品只能下一次单
+		String json = stringRedisTemplate.opsForValue()
+				.get(ConstantPrefixUtil.REDIS_ORDER_SUCCESS_FLAG_PREFIX + user.getId() + ":" + productId);
+		if (json != null) {
+			return new AckMessage<>(201, "亲，该商品已经秒杀过了");
+		}
+
+		//设置redis订单排队标记，分布式锁功能，保证同一用户同一商品只能秒杀成功一次，没有抢到锁的同学，说明前面自己已经在排队了
+		//设置超时时间防止死锁
+		if (!stringRedisTemplate.opsForValue().setIfAbsent(ConstantPrefixUtil.REDIS_ORDER_QUEUE_FLAG_PREFIX + user.getId() + ":" + productId,
+				"queue", 60, TimeUnit.SECONDS)) {
+			return new AckMessage<>(200, "亲，您正在排队中，请耐心等待哦");
+		}
+
+		// redis来减轻数据库的压力：10w QPS，原子减，串行执行
+		Long result = stringRedisTemplate.opsForValue().decrement(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX + productId);
+		if (result < 0) {
+			// 还原负数
+			stringRedisTemplate.opsForValue().increment(ConstantPrefixUtil.SKILL_PRODUCT_PREFIX + productId);
+			// 添加售完标记
+			LocalCache.SOLD_OUT_FLAGS.put(String.valueOf(productId), true);
+
+			// 创建zk售完标记节点
+			createZkNode(productId);
+
+			return new AckMessage<>(603, "商品已经抢完了");
+		}
+
+		// 商品是否存在
+		Product product = productService.getById(productId);
+		if (product == null) {
+			return new AckMessage<>(602, "商品不存在");
+		}
+
+		// 检查库存
+		if (product.getStock() < 1) {
+			return new AckMessage<>(603, "商品已经抢完了");
+		}
+
+		// 同步生成订单
+		// return createOrder(product, address, user);
+
+		// 异步下单，成功排队
+		return createAsyncOrder(product, address, user);
+
+	}
+	
+	/**
+	 * 秒杀接口2.0
+	 * @param productId
+	 * @return
+	 */
+	@PostMapping("/skill/{token}")
+	public @ResponseBody Object skillSafe(int productId,@PathVariable String token) {
+
+		// 做商品售完判断，拦截无效的请求
+		if (LocalCache.SOLD_OUT_FLAGS.get(String.valueOf(productId)) != null) {
+			return new AckMessage<>(603, "商品已经抢完了");
+		}
+
+		// 后台校验秒杀时间
+		if (!validSkillTime(productId)) {
+			return AckMessage.error("time is error");
+		}
+
+		// 验证参数
+		if (productId <= 0) {
+			return AckMessage.illegalArgs();
+		}
+
+		// 验证是否登陆
+		User user = getLoginUser();
+		if (user == null) {
+			return AckMessage.unauthorized();
+		}
+		
+		//验证用户token
+    	boolean check = checkToken(user, productId, token);
+    	if(!check){
+    		return AckMessage.error("非法请求");
+    	}
 
 		// 是否有默认收货地址
 		Address address = getUserDefaultAddress(user);
@@ -344,7 +436,6 @@ public class SkillController {
 
 	/**
 	 * 获取登陆用户
-	 * 
 	 * @return
 	 */
 	private User getLoginUser() {
@@ -394,4 +485,114 @@ public class SkillController {
 			e.printStackTrace();
 		}
 	}
+	
+	/**
+     * 获取秒杀接口的令牌
+     * @param productId
+     * @param verifyCode
+     * @return
+     */
+    @GetMapping(value="token")
+    @ResponseBody
+    public AckMessage getMiaoshaToken(HttpServletRequest request, String productId, String verifyCode) {
+    	//用redis限流，限制接口1分钟最多访问10000次
+    	Long requestNum = stringRedisTemplate.opsForValue().increment(request.getRequestURI().toString());
+		if (requestNum == 1) {
+			stringRedisTemplate.expire(request.getRequestURL().toString(), 60,TimeUnit.SECONDS);
+		} else if (requestNum > 100000) {
+			return AckMessage.error("访问超载，请稍后再试");
+		}
+		
+    	User user = getLoginUser();
+		if(user==null){
+			return AckMessage.error("必须登录才能参与秒杀");
+		}
+		//校验验证码，防止接口被刷
+    	boolean check = checkVerifyCode(user, productId, verifyCode);
+    	if(!check) {
+    		return AckMessage.error("验证码错误");
+    	}
+    	String token = createMiaoshaToken(user, productId);
+    	return AckMessage.ok(token);
+    }
+    
+    /**
+     * 校验验证码
+     * @param User
+     * @param productId
+     * @param verifyCode
+     * @return
+     */
+    private boolean checkVerifyCode(User user, String productId, String verifyCode) {
+		if(user == null || StringUtils.isEmpty(verifyCode)) {
+			return false;
+		}
+		String verifyCodeRedisKey = ConstantPrefixUtil.REDIS_VCODE_FLAG_PREFIX+user.getId()+":"+productId;
+		String realCode = stringRedisTemplate.opsForValue().get(verifyCodeRedisKey);
+		if(StringUtils.isEmpty(realCode) || !verifyCode.equals(realCode)) {
+			return false;
+		}
+		stringRedisTemplate.delete(verifyCodeRedisKey);
+		return true;
+	}
+    
+    /**
+     * 创建秒杀接口令牌
+     * @param User
+     * @param productId
+     * @return
+     */
+    private String createMiaoshaToken(User user, String productId) {
+		if(user == null) {
+			return null;
+		}
+		String token =  DigestUtils.sha1DigestAsHex(UUID.randomUUID().toString());
+		stringRedisTemplate.opsForValue().set(ConstantPrefixUtil.REDIS_SKILL_TOKEN_FLAG_PREFIX+user.getId()+":"+ productId, token, 60,TimeUnit.SECONDS);
+		return token;
+	}
+    
+    /**
+     * 验证令牌的有效性
+     * @param User
+     * @param productId
+     * @param token
+     * @return
+     */
+    private boolean checkToken(User user, int productId, String token) {
+		if(user == null || token == null) {
+			return false;
+		}
+		String realToken = stringRedisTemplate.opsForValue().get(ConstantPrefixUtil.REDIS_SKILL_TOKEN_FLAG_PREFIX+user.getId()+":"+ productId);
+		boolean result = token.equals(realToken);
+		//验证完token需要立即销毁
+		stringRedisTemplate.delete(ConstantPrefixUtil.REDIS_SKILL_TOKEN_FLAG_PREFIX+user.getId()+":"+ productId);
+		return result;
+	}
+    
+    
+    /**
+     * 获取验证码图片
+     * @param response
+     * @param productId
+     * @return
+     */
+    @GetMapping(value="/verifyCode")
+    @ResponseBody
+    public AckMessage getMiaoshaVerifyCod(HttpServletResponse response, String productId) {
+    	User user = getLoginUser();
+		if(user==null){
+			return AckMessage.error("必须登录才能参与秒杀");
+		}
+    	try {
+    		BufferedImage image  = new VerifyCode().createVerifyCode(user, productId);
+    		OutputStream out = response.getOutputStream();
+    		ImageIO.write(image, "JPEG", out);
+    		out.flush();
+    		out.close();
+    		return null;
+    	}catch(Exception e) {
+    		e.printStackTrace();
+    		return AckMessage.error("秒杀失败");
+    	}
+    }
 }

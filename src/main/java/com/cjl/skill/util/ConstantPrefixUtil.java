@@ -9,4 +9,8 @@ public class ConstantPrefixUtil {
 	
 	//订单排队标记
 	public static final String REDIS_ORDER_QUEUE_FLAG_PREFIX = "REDIS_ORDER_QUEUE:";
+	
+	public static final String REDIS_VCODE_FLAG_PREFIX = "Vcode:";
+	
+	public static final String REDIS_SKILL_TOKEN_FLAG_PREFIX = "Skill_Token:";
 }
