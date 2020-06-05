@@ -2,7 +2,9 @@ package com.cjl.skill.mq;
 
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.common.message.Message;
+import org.springframework.stereotype.Component;
 
+@Component
 public class MQProducer {
 	public void sendMessage(String group, String topic, String tag, byte[] message) throws Exception {
 

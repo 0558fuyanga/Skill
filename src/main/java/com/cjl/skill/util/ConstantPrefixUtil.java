@@ -13,4 +13,7 @@ public class ConstantPrefixUtil {
 	public static final String REDIS_VCODE_FLAG_PREFIX = "Vcode:";
 	
 	public static final String REDIS_SKILL_TOKEN_FLAG_PREFIX = "Skill_Token:";
+	
+	//基于url访问的限流标记
+	public static final String REDIS_SKILL_LIMIT_URL_FLAG_PREFIX = "Skill_Limit:Url:";
 }

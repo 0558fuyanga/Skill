@@ -5,13 +5,16 @@ import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.image.BufferedImage;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Component;
 import com.cjl.skill.pojo.User;
 import com.cjl.skill.util.ConstantPrefixUtil;
 
+@Component
 public class VerifyCode {
 	@Autowired
 	private StringRedisTemplate stringRedisTemplate;
@@ -23,7 +26,7 @@ public class VerifyCode {
 	 * @param productId
 	 * @return
 	 */
-	public BufferedImage createVerifyCode(User user, String productId) {
+	public BufferedImage createVerifyCode(User user, int productId) {
 		if (user == null) {
 			return null;
 		}
@@ -57,7 +60,8 @@ public class VerifyCode {
 		if (result == null) {
 			return null;
 		}
-		stringRedisTemplate.opsForValue().set(ConstantPrefixUtil.REDIS_VCODE_FLAG_PREFIX+user.getId()+":"+productId, result.toString(), 300);
+		stringRedisTemplate.opsForValue().set(ConstantPrefixUtil.REDIS_VCODE_FLAG_PREFIX+user.getId()+":"+productId,
+				result.toString(),300,TimeUnit.SECONDS);
 		// 输出图片
 		return image;
 	}

@@ -115,9 +115,9 @@
 							</tr>
 							<tr>
 								<td>
-								<input class="cls_btnSecKill" id="btnSecKill" type="button" value="秒杀" onclick="skill(${p.id})" />
-								<input id="verifyCode"  size="6" maxlength="6"  style="display:none" />
-								<img id="verifyCodeImg" width="80" height="30"  style="display:none" onclick="refreshVerifyCode(${p.id})"/>
+								<input class="cls_btnSecKill" id="btnSecKill" type="button" value="秒杀" onclick="getSkillToken(${p.id})" />
+								<input id="verifyCode${p.id}"  size="6" maxlength="6"  style="display:none" />
+								<img id="verifyCodeImg${p.id}" align="bottom" width="80" height="29"  style="display:none" onclick="refreshVerifyCode(${p.id})"/>
 								</td>
 							</tr>
 						</table>
@@ -214,49 +214,55 @@
 		        function tow(n) {
 		            return n >= 0 && n < 10 ? '0' + n : '' + n;
 		        }
-		      //获取秒杀地址
-		        function getMiaoshaToken(){
-		        	var productId = $("#productId").val();
-		        	g_showLoading();
+		        
+		      	//获取秒杀token
+		        function getSkillToken(productId){
 		        	$.ajax({
-		        		url:"${basepath}/miaosha/token",
+		        		url:"/token",
 		        		type:"GET",
 		        		data:{
 		        			productId:productId,
-		        			verifyCode:$("#verifyCode").val()
+		        			verifyCode:$("#verifyCode"+productId).val()
 		        		},
 		        		success:function(data){
-		        			if(data.code == 0){
-		        				var token = data.data;
-		        				doMiaosha(token);
+		        			if(data.status == 200){
+		        				let token = data.data;
+		        				//去秒杀
+		        				skillSafe(productId,token);
 		        			}else{
-		        				layer.msg(data.msg);
+		        				alert(data.message);
 		        			}
-		        		},
-		        		error:function(){
-		        			layer.msg("客户端请求有误");
 		        		}
 		        	});
 		        }
 
 		        //秒杀接口2.0
-		        function doMiaosha(token){
+		        function skillSafe(id,token){			        
 		        	$.ajax({
-		        		url:"${basepath}/miaosha/"+token+"/confirm",
+		        		url:"/skill/"+token,
 		        		type:"POST",
 		        		data:{
-		        			productId:$("#productId").val(),
+		        			productId:id
 		        		},
 		        		success:function(data){
-		        			if(data.code == 0){
-		        				//window.location.href="${basepath}/paygate/pay?orderId="+data.data.id + "&orderPayId="+data.data.orderpayID;
-		        				getMiaoshaResult($("#productId").val());
-		        			}else{
-		        				layer.msg(data.msg);
-		        			}
-		        		},
-		        		error:function(){
-		        			layer.msg("客户端请求有误");
+		        			if(data.status == 201){
+								alert(data.message)
+							}
+							else if (data.status == 200) {
+								//开始查询订单
+								queryOrder(id)
+								//弹出友好排队提示
+								alert(data.message)
+							}else if(data.status == 401){
+								//未登录
+								alert('未登录错误，请登录')
+							} 
+							else if(data.status == 501){
+								alert(data.message)
+								refreshStock(id)
+							}else{
+								alert(data.message)
+							}
 		        		}
 		        	});
 		        }
@@ -344,8 +350,9 @@
 						}
 					})
 				}
+				//刷新验证码
 				function refreshVerifyCode(id){
-					$("#verifyCodeImg").attr("src", "/verifyCode?productId="+id+"&timestamp="+new Date().getTime());
+					$("#verifyCodeImg"+id).attr("src", "/verifyCode?productId="+id+"&timestamp="+new Date().getTime());
 				}
 			</script>
 		
@@ -361,8 +368,14 @@
 							type : 'post',
 							success : function(data) {
 								if (data.status == 200) {
-									$("#verifyCodeImg").show();
-									$("#verifyCode").show();
+									$('[id^="verifyCode"]').show()
+									$('[id^="verifyCodeImg"]').show()
+									<c:forEach var="p" items="${proActs}">
+										<c:if test="${p.actId eq activity.id}">
+											//获取验证码
+											refreshVerifyCode(${p.id});
+										</c:if>
+									</c:forEach>
 									alert('登录成功')
 								}else {
 									alert(data.message)
@@ -377,8 +390,8 @@
 							type : 'post',
 							success : function(data) {
 								if (data.status == 200) {
-									$("#verifyCodeImg").hide();
-									$("#verifyCode").hide();
+									$('[id^="verifyCode"]').hide()
+									$('[id^="verifyCodeImg"]').hide()
 									alert('登出成功')
 								}else {
 									alert(data.message)

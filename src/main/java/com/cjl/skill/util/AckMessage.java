@@ -46,6 +46,10 @@ public class AckMessage<T> {
 		return new AckMessage<T>(100, message,null);
 	}
 
+	public static <T> AckMessage<T> vcodeError() {
+		return new AckMessage<T>(700,"验证码错误", null);
+	}
+	
 	public int getStatus() {
 		return status;
 	}

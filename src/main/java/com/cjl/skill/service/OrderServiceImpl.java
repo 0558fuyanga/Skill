@@ -62,7 +62,7 @@ public class OrderServiceImpl implements OrderService {
 			throw new OrderFailException(); 
 		}finally {
 			//无论成功还是失败，都清除排队标记
-			//清除订单排队标记
+			//清除订单排队标记，防止死锁
 			stringRedisTemplate.delete(ConstantPrefixUtil.REDIS_ORDER_QUEUE_FLAG_PREFIX + order.getUserId() + ":" + order.getProductId());
 		}
 	}
