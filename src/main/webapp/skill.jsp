@@ -227,7 +227,7 @@
 		        		success:function(data){
 		        			if(data.status == 200){
 		        				let token = data.data;
-		        				//去秒杀
+		        				//拿着token去秒杀
 		        				skillSafe(productId,token);
 		        			}else{
 		        				alert(data.message);

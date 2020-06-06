@@ -120,9 +120,6 @@ public class SkillController {
 
 	/**
 	 * 秒杀接口1.0
-	 * 
-	 * @param productId
-	 * @return
 	 */
 	@PostMapping("/skill")
 	public @ResponseBody Object skill(int productId) {
@@ -204,9 +201,6 @@ public class SkillController {
 
 	/**
 	 * 秒杀接口2.0
-	 * 
-	 * @param productId
-	 * @return
 	 */
 	@PostMapping("/skill/{token}")
 	public @ResponseBody Object skillSafe(int productId, @PathVariable String token) {
@@ -232,10 +226,10 @@ public class SkillController {
 			return AckMessage.unauthorized();
 		}
 
-		// 验证用户token
+		//验证用户token
 		boolean check = checkToken(user, productId, token);
 		if (!check) {
-			return AckMessage.error("请求不合法");
+			return AckMessage.error("token错误");
 		}
 
 		// 是否有默认收货地址
@@ -400,11 +394,6 @@ public class SkillController {
 
 	/**
 	 * 下单操作
-	 * 
-	 * @param p
-	 * @param address
-	 * @param user
-	 * @return
 	 */
 	private Object createOrder(Product p, Address address, User user) {
 		Order record = new Order();
@@ -435,9 +424,6 @@ public class SkillController {
 
 	/**
 	 * 获取默认收货地址
-	 * 
-	 * @param user
-	 * @return
 	 */
 	private Address getUserDefaultAddress(User user) {
 		// 登录之后，把用户的默认地址放到缓存中，一般是redis中
@@ -446,8 +432,6 @@ public class SkillController {
 
 	/**
 	 * 获取登陆用户
-	 * 
-	 * @return
 	 */
 	private User getLoginUser() {
 		HttpSession session = RequestHelper.getSession();
@@ -502,7 +486,7 @@ public class SkillController {
 	 */
 	@GetMapping(value = "/token")
 	@ResponseBody
-	public AckMessage getSkillToken(String productId, String verifyCode,HttpServletRequest request) {
+	public AckMessage getSkillToken(String productId, String verifyCode, HttpServletRequest request) {
 		//计数器限流算法，例如限制接口1分钟最多访问5次
 		String key = ConstantPrefixUtil.REDIS_SKILL_LIMIT_URL_FLAG_PREFIX+request.getRequestURI().toString();
 		Long requestNum = stringRedisTemplate.opsForValue().increment(key);
@@ -516,12 +500,15 @@ public class SkillController {
 		if (user == null) {
 			return AckMessage.unauthorized();
 		}
+		
 		// 校验验证码
 		boolean check = checkVerifyCode(user, productId, verifyCode);
 		if (!check) {
 			return AckMessage.vcodeError();
 		}
+		
 		String token = createSkillToken(user, productId);
+		
 		return AckMessage.ok(token);
 	}
 
@@ -537,6 +524,7 @@ public class SkillController {
 		if (StringUtils.isEmpty(realCode) || !verifyCode.equals(realCode)) {
 			return false;
 		}
+		//删除验证码
 		stringRedisTemplate.delete(verifyCodeRedisKey);
 		return true;
 	}
@@ -545,7 +533,7 @@ public class SkillController {
 	 * 创建token
 	 */
 	private String createSkillToken(User user, String productId) {
-		if (user == null) {
+		if (user == null || productId == null) {
 			return null;
 		}
 		String token = DigestUtils.sha1DigestAsHex(UUID.randomUUID().toString());
@@ -559,7 +547,7 @@ public class SkillController {
 	 * 验证token
 	 */
 	private boolean checkToken(User user, int productId, String token) {
-		if (user == null || token == null) {
+		if (user == null || token == null || productId <= 0) {
 			return false;
 		}
 		String realToken = stringRedisTemplate.opsForValue()
