@@ -43,7 +43,7 @@ public class OrderServiceImpl implements OrderService {
 		try {
 			// 扣减库存时，同时做判断，需要修改sql语句
 			
-			//syncoostock--; stock = 10; stock = 10-1; 赋值
+			//syncoostock--; stock = 10; stock = 10-1; 赋值  我正在进行修改库存操作update隐示锁
 			if(productMapper.decreaseStock(order.getProductId())==0) { 
 				order.setId(0);
 				return order;

@@ -115,7 +115,7 @@
     from t_product
   </select>
   
-  <!-- 减库存 -->
+  <!-- 减库存  相当于先查询然后进行判断然后进行减库存操作-->
   <update id="decreaseStock" parameterType="int">
     update t_product
     set stock = stock - 1

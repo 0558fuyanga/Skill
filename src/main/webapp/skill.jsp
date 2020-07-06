@@ -367,7 +367,7 @@
 							url : '/login',
 							type : 'post',
 							success : function(data) {
-								if (data.status == 200) {
+								if (data.status == 200) {//登录成功
 									$('[id^="verifyCode"]').show()
 									$('[id^="verifyCodeImg"]').show()
 									<c:forEach var="p" items="${proActs}">
@@ -390,6 +390,7 @@
 							type : 'post',
 							success : function(data) {
 								if (data.status == 200) {
+									//隐藏验证码
 									$('[id^="verifyCode"]').hide()
 									$('[id^="verifyCodeImg"]').hide()
 									alert('登出成功')
